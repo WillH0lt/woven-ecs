@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "name": "editor-store-server-example-bun",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch server.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

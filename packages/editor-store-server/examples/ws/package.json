@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "name": "editor-store-server-example-ws",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "@woven-ecs/editor-store-server": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0"
+  }
+}

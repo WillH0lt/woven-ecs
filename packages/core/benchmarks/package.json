@@ -1,0 +1,18 @@
+{
+  "name": "benchmarks",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "bitecs": "^0.3.40",
+    "elegant-spinner": "^3.0.0",
+    "log-update": "^7.0.2",
+    "miniplex": "^2.0.0"
+  }
+}

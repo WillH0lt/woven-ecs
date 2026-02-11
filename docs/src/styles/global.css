@@ -1,0 +1,29 @@
+
+@layer base, starlight, theme, components, utilities;
+
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import url('https://fonts.googleapis.com/css2?family=Cascadia+Mono:ital,wght@0,200..700;1,200..700&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+
+:root {
+  --sl-font: 'Figtree', sans-serif;
+  --sl-font-mono: 'Cascadia Mono', monospace;
+}
+
+@theme {
+  /*
+	Configure your Tailwind theme that will be used by Starlight.
+	https://starlight.astro.build/guides/css-and-tailwind/#styling-starlight-with-tailwind
+	*/
+}
+
+/*
+Add additional Tailwind styles to this file:
+https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
+*/
+
+/* Remove divider after social icons */
+/* .social-icons::after {
+  display: none;
+} */

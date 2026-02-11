@@ -1,0 +1,16 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  background: #0a0a0f;
+  color: white;
+}
+
+canvas {
+  display: block;
+}

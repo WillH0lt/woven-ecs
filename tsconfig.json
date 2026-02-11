@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.options.json",
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/editor-store" },
+    { "path": "packages/editor-store-server" }
+  ]
+}
