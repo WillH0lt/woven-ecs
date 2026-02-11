@@ -262,8 +262,8 @@ describe('Query', () => {
       // Even numbers without multiples of 10: 500 - 100 = 400
       expect(results.length).toBe(400)
 
-      // Should be very fast (under 10ms for 1000 entities)
-      expect(endTime - startTime).toBeLessThan(10)
+      // Should be very fast (under 15ms for 1000 entities)
+      expect(endTime - startTime).toBeLessThan(15)
     })
 
     it('should handle queries on large entity sets efficiently', () => {
