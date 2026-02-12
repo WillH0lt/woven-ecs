@@ -1,13 +1,28 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import icon from "astro-icon";
 
 // https://astro.build/config
 export default defineConfig({
   integrations: [
     starlight({
       title: "Woven-ECS",
+      expressiveCode: {
+        themes: ["github-dark-default"],
+        frames: false,
+      },
       social: [
+        {
+          icon: "blueSky",
+          label: "Bluesky",
+          href: "https://bsky.app/profile/william.land",
+        },
+        {
+          icon: "discord",
+          label: "Discord",
+          href: "https://discord.gg/your-invite-code",
+        },
         {
           icon: "github",
           label: "GitHub",
@@ -16,21 +31,19 @@ export default defineConfig({
       ],
       sidebar: [
         {
-          label: "Guide",
-          items: [
-            { label: "Introduction", slug: "guide/introduction" },
-            { label: "Getting Started", slug: "guide/getting-started" },
-          ],
+          label: "🚀 Quick Start",
+          link: "quick-start",
         },
         {
-          label: "Architecture",
+          label: "🎓 Learn Woven-ECS",
           items: [
-            { label: "Components", slug: "architecture/components" },
-            { label: "Systems", slug: "architecture/systems" },
-            { label: "Queries", slug: "architecture/queries" },
-            { label: "World", slug: "architecture/world" },
-            { label: "Multithreading", slug: "architecture/multithreading" },
-            { label: "Events & Subscriptions", slug: "architecture/events" },
+            { label: "World", slug: "docs/world" },
+            { label: "Entities", slug: "docs/entities" },
+            { label: "Components & Singletons", slug: "docs/components-singletons" },
+            { label: "Systems", slug: "docs/systems" },
+            { label: "Queries", slug: "docs/queries" },
+            { label: "Multithreading", slug: "docs/multithreading" },
+            { label: "Best Practices", slug: "docs/best-practices" },
           ],
         },
         {
@@ -50,6 +63,10 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/global.css"],
+      components: {
+        Footer: "./src/components/Footer.astro",
+      },
     }),
+    icon(),
   ],
 });

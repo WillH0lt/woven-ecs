@@ -31,7 +31,7 @@ export {
   removeEntity,
 } from './Context'
 export { EventType, type EventTypeValue } from './EventBuffer'
-export { defineQuery, type QueryDef, type QueryOptions } from './Query'
+export { defineQuery, type QueryBuilder, type QueryDef, type QueryOptions } from './Query'
 export {
   defineSystem,
   defineWorkerSystem,

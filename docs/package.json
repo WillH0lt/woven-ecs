@@ -13,8 +13,10 @@
   "dependencies": {
     "@astrojs/starlight": "^0.37.2",
     "@astrojs/starlight-tailwind": "^4.0.2",
+    "@iconify-json/lucide": "^1.2.90",
     "@tailwindcss/postcss": "^4.1.18",
     "astro": "^5.16.9",
+    "astro-icon": "^1.1.5",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.0.0"
   }

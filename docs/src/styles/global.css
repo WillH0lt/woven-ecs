@@ -9,13 +9,16 @@
 :root {
   --sl-font: 'Figtree', sans-serif;
   --sl-font-mono: 'Cascadia Mono', monospace;
+  --sl-text-h1: var(--sl-text-4xl);
+  --sl-text-h2: var(--sl-text-3xl);
+  --sl-text-h3: var(--sl-text-2xl);
+  --sl-text-h4: var(--sl-text-xl);
 }
 
 @theme {
-  /*
-	Configure your Tailwind theme that will be used by Starlight.
-	https://starlight.astro.build/guides/css-and-tailwind/#styling-starlight-with-tailwind
-	*/
+  --color-gray-2: var(--sl-color-gray-2);
+  --color-gray-5: var(--sl-color-gray-5);
+  --color-accent: var(--sl-color-text-accent);
 }
 
 /*
@@ -27,3 +30,15 @@ https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
 /* .social-icons::after {
   display: none;
 } */
+
+/* Smaller hero title */
+.hero h1 {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+  font-weight: bold;
+}
+
+.hero .tagline {
+  font-size: clamp(0.75rem, 2.5vw, 1rem);
+}
+
+

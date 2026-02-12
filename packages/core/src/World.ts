@@ -175,7 +175,7 @@ export class World {
       })
     }
 
-    if (systems.length === 0) return
+    // if (systems.length === 0) return
 
     // Record execution for all systems
     for (const system of systems) {

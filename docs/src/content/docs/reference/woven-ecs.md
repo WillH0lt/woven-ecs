@@ -1,6 +1,6 @@
 ---
-title: API Reference
-description: Complete API reference for Woven-ECS
+title: woven-ecs
+description: API reference for @woven-ecs/core
 ---
 
 ## Components

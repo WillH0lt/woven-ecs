@@ -1,4 +1,5 @@
 {
+  "biome.lspBin": "./node_modules/@biomejs/biome/bin/biome",
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.organizeImports.biome": "explicit",
@@ -16,5 +17,6 @@
   },
   "[jsonc]": {
     "editor.defaultFormatter": "biomejs.biome"
-  }
+  },
+  "vitest.disableWorkspaceWarning": true
 }

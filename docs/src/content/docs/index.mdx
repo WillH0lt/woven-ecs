@@ -3,42 +3,129 @@ title: Woven-ECS
 description: A high-performance, multithreaded Entity Component System for TypeScript
 template: splash
 hero:
-  title: Woven-ECS
-  tagline: A high-performance, multithreaded Entity Component System for TypeScript
+  title: The Multithreaded ECS Framework for the Web
+  tagline: An approachable, flexible, and high-performance framework for building games, whiteboards, and more.
   actions:
     - text: Get Started
-      link: /guide/introduction/
+      link: /quick-start/
       icon: right-arrow
     - text: View on GitHub
-      link: https://github.com/your-username/Woven-ECS
+      link: https://github.com/WillH0lt/woven-ecs
       icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { CardGrid } from '@astrojs/starlight/components';
+import Card from '../../components/Card.astro';
 
 ## Why Woven-ECS?
 
-<CardGrid stagger>
-  <Card title="Multithreaded" icon="rocket">
-    Run systems in parallel across Web Workers with zero-copy SharedArrayBuffer data sharing.
+<CardGrid>
+  <Card title="Easy to Use" icon="lucide:lightbulb">
+    Straightforward API for defining components, creating entities, and writing systems. Full type-safety with TypeScript.
   </Card>
-  <Card title="Type-Safe" icon="seti:typescript">
-    Full TypeScript support with strongly typed components, queries, and field definitions.
+  <Card title="Reactive Queries" icon="lucide:search">
+    Track all changes to entities and components automatically. Query for entities that were **added**, **removed**, or **changed** since the last frame.
   </Card>
-  <Card title="Data-Oriented" icon="bars">
-    Components store typed data in SharedArrayBuffers for memory efficiency and cache-friendly access.
+  <Card title="Built-in Multithreading" icon="lucide:spool">
+    Run heavy workloads in parallel without any jank. Effortlessly distribute work across multiple CPU cores, no manual thread management required.
   </Card>
-  <Card title="Reactive" icon="refresh">
-    Built-in event system tracks entity and component changes with efficient queries for added, removed, and changed entities.
+  <Card title="Open Source" icon="lucide:file-code">
+    Read the source code, create issues, and contribute on GitHub. We welcome contributions and feedback as the project grows.
   </Card>
 </CardGrid>
 
+## What it Looks Like
+
+```typescript
+import {
+  addComponent,
+  createEntity,
+  defineComponent,
+  defineQuery,
+  defineSystem,
+  field,
+  World,
+} from '@woven-ecs/core';
+
+// Define components with typed fields
+const Position = defineComponent({
+  x: field.float32(),
+  y: field.float32(),
+});
+
+const Velocity = defineComponent({
+  x: field.float32(),
+  y: field.float32(),
+});
+
+// Define a query to find entities with both components
+const movingEntities = defineQuery((q) =>
+  q.with(Position, Velocity)
+);
+
+// Define a system to process matching entities
+const movementSystem = defineSystem((ctx) => {
+  for (const eid of movingEntities.current(ctx)) {
+    const pos = Position.write(ctx, eid);
+    const vel = Velocity.read(ctx, eid);
+    pos.x += vel.x;
+    pos.y += vel.y;
+  }
+});
+
+// Create the world
+const world = new World([Position, Velocity]);
+
+// Initialize with an entity
+world.execute((ctx) => {
+  const eid = createEntity(ctx);
+  addComponent(ctx, eid, Position, { x: 0, y: 0 });
+  addComponent(ctx, eid, Velocity, { x: 1, y: 1 });
+});
+
+// Game loop
+function loop() {
+  world.execute(movementSystem);
+  requestAnimationFrame(loop);
+}
+
+loop();
+```
+
 ## Features
 
-- **Zero-Copy Threading**: SharedArrayBuffer enables data sharing across threads without serialization
-- **Rich Field Types**: Numbers, strings, booleans, arrays, tuples, enums, and entity references
 - **Powerful Queries**: Filter entities by component presence with `with`, `without`, and `any` operators
 - **Change Tracking**: Query for entities that were added, removed, or changed since last frame
+- **Rich Field Types**: Numbers, strings, booleans, arrays, tuples, enums, binary, and entity references
 - **Singletons**: First-class support for global state like time, input, and configuration
+- **Multithreading**: Execute systems in parallel across worker threads with automatic entity partitioning
 - **Entity References**: Reference other entities with automatic validation
+
+## Build Collaborative Editors
+
+The [`@woven-ecs/editor-store`](/editor-store/introduction/) package extends Woven-ECS with everything you need to build multiplayer editor applications like infinite canvases and creative design tools.
+
+<CardGrid>
+  <Card title="Undo/Redo" icon="lucide:undo-2">
+    Full history tracking with configurable depth. Users can undo and redo changes across sessions.
+  </Card>
+  <Card title="Persistence" icon="lucide:database">
+    Automatic IndexedDB storage for offline support. Changes are saved locally and synced when back online.
+  </Card>
+  <Card title="Real-time Sync" icon="lucide:users">
+    WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
+  </Card>
+  <Card title="Migrations" icon="lucide:git-branch">
+    Version your component schemas with automatic migrations. Evolve your data model without breaking existing documents.
+  </Card>
+</CardGrid>
+
+[Learn more about editor-store →](/editor-store/introduction/)
+
+## Read the Docs
+
+- [Quick Start](/quick-start/) - Install Woven-ECS and create your first project
+- [Components](/docs/components-singletons/) - Learn about defining and using components
+- [Queries](/docs/queries/) - Master the query system for finding entities
+- [Multithreading](/docs/multithreading/) - Understand how to set up multithreaded systems

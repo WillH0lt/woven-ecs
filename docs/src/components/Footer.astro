@@ -1,0 +1,38 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<footer class="border-t border-gray-5 py-6 px-(--sl-content-pad-x)">
+  <div
+    class="flex justify-between items-center flex-wrap gap-4 text-sm text-gray-2"
+  >
+    <span>© {new Date().getFullYear()} Will Holt</span>
+    <div class="flex gap-6">
+      <a
+        href="https://william.land"
+        target="_blank"
+        class="text-gray-2 no-underline hover:text-accent"
+      >
+        william.land
+      </a>
+      <a
+        href="https://bsky.app/profile/william.land"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-gray-2 no-underline hover:text-accent"
+      >
+        Bluesky
+      </a>
+      <a
+        href="https://github.com/WillH0lt"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-gray-2 no-underline hover:text-accent"
+      >
+        GitHub
+      </a>
+    </div>
+  </div>
+</footer>
