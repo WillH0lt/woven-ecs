@@ -458,63 +458,15 @@ describe('Room', () => {
         y: 1,
       })
     })
-
-    it('restores from initialSnapshot', () => {
-      const restored = new Room({
-        initialSnapshot: {
-          timestamp: 5,
-          state: { 'e1/Pos': { x: 42 } },
-          timestamps: { 'e1/Pos': { x: 5 } },
-        },
-      })
-
-      const snap = restored.getSnapshot()
-      expect(snap.timestamp).toBe(5)
-      expect(snap.state['e1/Pos']).toEqual({ x: 42 })
-    })
   })
 
   describe('persistence', () => {
-    it('calls onDataChange when document patches arrive', () => {
-      const onDataChange = vi.fn()
-      room = new Room({ onDataChange })
-
-      const { sessionId } = connectClient(room, 'alice')
-      room.handleSocketMessage(
-        sessionId,
-        JSON.stringify({
-          type: 'patch',
-          messageId: 'msg-1',
-          documentPatches: [{ 'e1/Pos': { _exists: true, x: 10 } }],
-        }),
-      )
-
-      expect(onDataChange).toHaveBeenCalledWith(room)
-    })
-
-    it('does not call onDataChange for ephemeral-only patches', () => {
-      const onDataChange = vi.fn()
-      room = new Room({ onDataChange })
-
-      const { sessionId } = connectClient(room, 'alice')
-      room.handleSocketMessage(
-        sessionId,
-        JSON.stringify({
-          type: 'patch',
-          messageId: 'msg-1',
-          ephemeralPatches: [{ 'alice/Cursor': { x: 1 } }],
-        }),
-      )
-
-      expect(onDataChange).not.toHaveBeenCalled()
-    })
-
     it('throttles saves to storage', async () => {
       vi.useFakeTimers()
       const storage = new MemoryStorage()
       const saveSpy = vi.spyOn(storage, 'save')
 
-      room = new Room({ storage, saveThrottleMs: 100 })
+      room = new Room({ createStorage: () => storage, saveThrottleMs: 100 })
 
       const { sessionId } = connectClient(room, 'alice')
 
@@ -557,7 +509,7 @@ describe('Room', () => {
         timestamps: { 'e1/Pos': { x: 10 } },
       })
 
-      room = new Room({ storage })
+      room = new Room({ createStorage: () => storage })
       await room.load()
 
       const snap = room.getSnapshot()

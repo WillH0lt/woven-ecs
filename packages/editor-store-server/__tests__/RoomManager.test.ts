@@ -19,37 +19,38 @@ describe('RoomManager', () => {
 
   beforeEach(() => {
     manager = new RoomManager({
-      createStorage: () => new MemoryStorage(),
       idleTimeout: 50,
     })
   })
 
+  const getRoom = (roomId: string) => manager.getOrCreateRoom(roomId, { createStorage: () => new MemoryStorage() })
+
   it('creates and returns rooms', async () => {
-    const room = await manager.getRoom('room-1')
+    const room = await getRoom('room-1')
     expect(room).toBeDefined()
     expect(room.getSessionCount()).toBe(0)
   })
 
   it('returns the same room for the same id', async () => {
-    const room1 = await manager.getRoom('room-1')
-    const room2 = await manager.getRoom('room-1')
+    const room1 = await getRoom('room-1')
+    const room2 = await getRoom('room-1')
     expect(room1).toBe(room2)
   })
 
   it('creates different rooms for different ids', async () => {
-    const room1 = await manager.getRoom('room-1')
-    const room2 = await manager.getRoom('room-2')
+    const room1 = await getRoom('room-1')
+    const room2 = await getRoom('room-2')
     expect(room1).not.toBe(room2)
   })
 
   it('lists room ids', async () => {
-    await manager.getRoom('room-1')
-    await manager.getRoom('room-2')
+    await getRoom('room-1')
+    await getRoom('room-2')
     expect(manager.getRoomIds().sort()).toEqual(['room-1', 'room-2'])
   })
 
   it('closes a specific room', async () => {
-    const room = await manager.getRoom('room-1')
+    const room = await getRoom('room-1')
     const socket = createMockSocket()
     room.handleSocketConnect({ socket, clientId: 'alice', permissions: 'readwrite' })
 
@@ -60,8 +61,8 @@ describe('RoomManager', () => {
   })
 
   it('closes all rooms', async () => {
-    await manager.getRoom('room-1')
-    await manager.getRoom('room-2')
+    await getRoom('room-1')
+    await getRoom('room-2')
 
     manager.closeAll()
 
@@ -71,7 +72,7 @@ describe('RoomManager', () => {
   it('auto-closes empty rooms after idle timeout', async () => {
     vi.useFakeTimers()
 
-    const room = await manager.getRoom('room-1')
+    const room = await getRoom('room-1')
     const socket = createMockSocket()
     const sessionId = room.handleSocketConnect({ socket, clientId: 'alice', permissions: 'readwrite' })
 
@@ -92,7 +93,7 @@ describe('RoomManager', () => {
   it('cancels idle timeout when a new client connects', async () => {
     vi.useFakeTimers()
 
-    const room = await manager.getRoom('room-1')
+    const room = await getRoom('room-1')
     const s1 = createMockSocket()
     const sid1 = room.handleSocketConnect({ socket: s1, clientId: 'alice', permissions: 'readwrite' })
 
@@ -102,7 +103,7 @@ describe('RoomManager', () => {
     // New client reconnects before timeout
     await vi.advanceTimersByTimeAsync(25)
     // Getting the room again should cancel the idle timer
-    const sameRoom = await manager.getRoom('room-1')
+    const sameRoom = await getRoom('room-1')
     const s2 = createMockSocket()
     sameRoom.handleSocketConnect({ socket: s2, clientId: 'bob', permissions: 'readwrite' })
 
@@ -120,7 +121,7 @@ describe('RoomManager', () => {
   })
 
   it('getExistingRoom returns room if it exists', async () => {
-    const room = await manager.getRoom('room-1')
+    const room = await getRoom('room-1')
     expect(manager.getExistingRoom('room-1')).toBe(room)
   })
 })

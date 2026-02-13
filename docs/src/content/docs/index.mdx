@@ -102,22 +102,28 @@ loop();
 - **Multithreading**: Execute systems in parallel across worker threads with automatic entity partitioning
 - **Entity References**: Reference other entities with automatic validation
 
-## Build Collaborative Editors
+## Build Collaborative Applications
 
-The [`@woven-ecs/editor-store`](/editor-store/introduction/) package extends Woven-ECS with everything you need to build multiplayer editor applications like infinite canvases and creative design tools.
+The [`@woven-ecs/editor-store`](/editor-store/introduction/) and [`@woven-ecs/editor-store-server`](/editor-store/server-setup/) packages extend Woven-ECS with everything you need to build multiplayer editor applications like infinite canvases and creative design tools.
 
 <CardGrid>
+  <Card title="Real-time Sync" icon="lucide:users">
+    WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
+  </Card>
+  <Card title="Local-First" icon="lucide:house-heart">
+    Your app works offline by default. Data lives on the client and syncs to the server when connected.
+  </Card>
   <Card title="Undo/Redo" icon="lucide:undo-2">
     Full history tracking with configurable depth. Users can undo and redo changes across sessions.
   </Card>
   <Card title="Persistence" icon="lucide:database">
     Automatic IndexedDB storage for offline support. Changes are saved locally and synced when back online.
   </Card>
-  <Card title="Real-time Sync" icon="lucide:users">
-    WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
-  </Card>
   <Card title="Migrations" icon="lucide:git-branch">
     Version your component schemas with automatic migrations. Evolve your data model without breaking existing documents.
+  </Card>
+  <Card title="Configurable" icon="lucide:settings-2">
+    Configure sync behavior per component: persist to server, sync ephemerally, store locally, or skip entirely.
   </Card>
 </CardGrid>
 

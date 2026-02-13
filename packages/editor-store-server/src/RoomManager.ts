@@ -1,9 +1,6 @@
-import { Room } from './Room'
-import type { Storage } from './storage/Storage'
+import { Room, type RoomOptions } from './Room'
 
 export interface RoomManagerOptions {
-  /** Factory for creating a storage backend per room. */
-  createStorage: (roomId: string) => Storage
   /** Auto-close empty rooms after this many ms. Default: 30000 (30s). */
   idleTimeout?: number
 }
@@ -11,16 +8,14 @@ export interface RoomManagerOptions {
 export class RoomManager {
   private rooms = new Map<string, Room>()
   private idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  private createStorage: (roomId: string) => Storage
   private idleTimeout: number
 
-  constructor(options: RoomManagerOptions) {
-    this.createStorage = options.createStorage
+  constructor(options: RoomManagerOptions = {}) {
     this.idleTimeout = options.idleTimeout ?? 30_000
   }
 
   /** Get an existing room or create a new one, loading state from storage. */
-  async getRoom(roomId: string): Promise<Room> {
+  async getOrCreateRoom(roomId: string, options: RoomOptions = {}): Promise<Room> {
     const existing = this.rooms.get(roomId)
     if (existing) {
       // Cancel any pending idle cleanup
@@ -28,11 +23,12 @@ export class RoomManager {
       return existing
     }
 
-    const storage = this.createStorage(roomId)
+    const userOnSessionRemoved = options.onSessionRemoved
     const room = new Room({
-      storage,
-      onSessionRemoved: (_room, { remaining }) => {
-        if (remaining === 0) {
+      ...options,
+      onSessionRemoved: (room, info) => {
+        userOnSessionRemoved?.(room, info)
+        if (info.remaining === 0) {
           this.scheduleIdleClose(roomId)
         }
       },
@@ -41,6 +37,13 @@ export class RoomManager {
     await room.load()
     this.rooms.set(roomId, room)
     return room
+  }
+
+  /**
+   * @deprecated Use getOrCreateRoom instead
+   */
+  async getRoom(roomId: string): Promise<Room> {
+    return this.getOrCreateRoom(roomId)
   }
 
   /** Get a room only if it already exists. Does not create. */

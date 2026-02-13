@@ -5,7 +5,6 @@ import { WebSocketServer } from 'ws'
 const PORT = Number(process.env.PORT) || 8087
 
 const manager = new RoomManager({
-  createStorage: (roomId) => new FileStorage({ dir: './data', roomId }),
   idleTimeout: 60_000,
 })
 
@@ -32,7 +31,9 @@ wss.on('connection', async (ws, req) => {
   // if (!auth) { ws.close(1008, "Unauthorized"); return; }
   // const permissions = auth.canWrite ? "readwrite" : "readonly";
 
-  const room = await manager.getRoom(roomId)
+  const room = await manager.getOrCreateRoom(roomId, {
+    createStorage: () => new FileStorage({ dir: './data', roomId }),
+  })
 
   const sessionId = room.handleSocketConnect({
     socket: { send: (data) => ws.send(data), close: () => ws.close() },

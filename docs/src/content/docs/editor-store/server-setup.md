@@ -3,86 +3,84 @@ title: Server Setup
 description: Configure the multiplayer server with different runtimes and storage backends
 ---
 
+Example server implementations:
+* [Bun server example](https://github.com/WillH0lt/woven-ecs/tree/main/packages/editor-store-server/examples/bun)
+* [Node.js server example](https://github.com/WillH0lt/woven-ecs/tree/main/packages/editor-store-server/examples/node)
+
+
 ## Node.js with ws
 
+You will need to manually wire RoomManager to your WebSocket server. Here's a minimal example using the `ws` library and file-based storage:
+
 ```typescript
-import { WebSocketServer } from 'ws';
-import { RoomManager, FileStorage } from '@woven-ecs/editor-store-server';
+import { createServer } from 'node:http'
+import { FileStorage, RoomManager } from '@woven-ecs/editor-store-server'
+import { WebSocketServer } from 'ws'
 
-const wss = new WebSocketServer({ port: 8080 });
+const PORT = Number(process.env.PORT) || 8087
 
-const rooms = new RoomManager({
-  createStorage: (roomId) => new FileStorage({
-    dir: './data',
-    roomId,
-  }),
-});
+const manager = new RoomManager({
+  idleTimeout: 60_000, // Close empty rooms after 60s (default: 30s)
+})
+
+const server = createServer((_req, res) => {
+  res.writeHead(200).end('ok')
+})
+
+const wss = new WebSocketServer({ server })
 
 wss.on('connection', async (ws, req) => {
-  const url = new URL(req.url!, 'http://localhost');
-  const documentId = url.searchParams.get('documentId')!;
-  const clientId = url.searchParams.get('clientId')!;
+  const url = new URL(req.url!, `http://localhost:${PORT}`)
+  const roomId = url.searchParams.get('roomId') ?? 'default'
+  const clientId = url.searchParams.get('clientId')
+  // const token = url.searchParams.get('token')
 
-  const room = await rooms.getRoom(documentId);
+  if (!clientId) {
+    ws.close(1008, 'Missing clientId query parameter')
+    return
+  }
+
+  // Example: validate the token and determine permissions.
+  // Replace this with your own authentication logic.
+  // const auth = await validateToken(token);
+  // if (!auth) { ws.close(1008, "Unauthorized"); return; }
+  // const permissions = auth.canWrite ? "readwrite" : "readonly";
+
+  const room = await manager.getOrCreateRoom(roomId, {
+    saveThrottleMs: 5_000,
+    createStorage: () => new FileStorage({ dir: './data', roomId }),
+  })
+
   const sessionId = room.handleSocketConnect({
-    socket: ws,
+    socket: { send: (data) => ws.send(data), close: () => ws.close() },
     clientId,
-    permissions: 'read-write',
-  });
+    permissions: 'readwrite',
+  })
 
-  ws.on('message', (data) => {
-    room.handleSocketMessage(sessionId, data.toString());
-  });
+  ws.on('message', (data) => room.handleSocketMessage(sessionId, String(data)))
+  ws.on('close', () => room.handleSocketClose(sessionId))
+  ws.on('error', () => room.handleSocketError(sessionId))
 
-  ws.on('close', () => {
-    room.handleSocketClose(sessionId);
-  });
-});
-```
+  console.log(`Client ${clientId} connected to room ${roomId} (${room.getSessionCount()} active)`)
+})
 
-## Bun
+server.listen(PORT, () => {
+  console.log(`ECS sync server listening on ws://localhost:${PORT}`)
+  console.log(`Connect: ws://localhost:${PORT}?roomId=myRoom&clientId=myClient`)
+})
 
-```typescript
-import { RoomManager, MemoryStorage } from '@woven-ecs/editor-store-server';
+process.on('SIGINT', () => {
+  console.log('\nShutting down...')
+  manager.closeAll()
+  server.close()
+  process.exit(0)
+})
 
-const rooms = new RoomManager({
-  createStorage: () => new MemoryStorage(),
-});
-
-Bun.serve({
-  port: 8080,
-  fetch(req, server) {
-    const url = new URL(req.url);
-    if (url.pathname === '/ws') {
-      server.upgrade(req, { data: { url } });
-      return;
-    }
-    return new Response('Not found', { status: 404 });
-  },
-  websocket: {
-    async open(ws) {
-      const documentId = ws.data.url.searchParams.get('documentId');
-      const clientId = ws.data.url.searchParams.get('clientId');
-
-      const room = await rooms.getRoom(documentId);
-      ws.data.sessionId = room.handleSocketConnect({
-        socket: ws,
-        clientId,
-        permissions: 'read-write',
-      });
-      ws.data.room = room;
-    },
-    message(ws, message) {
-      ws.data.room.handleSocketMessage(ws.data.sessionId, message.toString());
-    },
-    close(ws) {
-      ws.data.room.handleSocketClose(ws.data.sessionId);
-    },
-  },
-});
 ```
 
 ## Storage Backends
+
+`editor-store-server` provides some built-in storage options, but you can also implement your own by adhering to the `Storage` interface:
 
 ```typescript
 import { MemoryStorage, FileStorage } from '@woven-ecs/editor-store-server';
@@ -104,12 +102,37 @@ class PostgresStorage implements Storage {
 }
 ```
 
-## Conflict Resolution
+## Permissions
 
-The server uses **last-write-wins at the field level**:
+Each session connects with a permission level: `readwrite` or `readonly`.
 
-- Each field has a timestamp tracking when it was last modified
-- When two clients edit the same field, the later timestamp wins
-- Different fields on the same component can be edited simultaneously without conflict
+```typescript
+const sessionId = room.handleSocketConnect({
+  socket: { send: (data) => ws.send(data), close: () => ws.close() },
+  clientId,
+  permissions: 'readonly', // or 'readwrite'
+});
+```
 
-This provides a good balance between simplicity and collaborative editing support.
+- **`readwrite`** - Client can send and receive patches
+- **`readonly`** - Client can only receive patches
+
+You can change permissions dynamically:
+
+```typescript
+// Upgrade a viewer to editor
+room.setSessionPermissions(sessionId, 'readwrite');
+
+// Downgrade to read-only
+room.setSessionPermissions(sessionId, 'readonly');
+
+// Check current permissions
+const perms = room.getSessionPermissions(sessionId);
+```
+
+To list all connected sessions:
+
+```typescript
+const sessions = room.getSessions();
+// [{ sessionId, clientId, permissions }, ...]
+```

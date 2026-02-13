@@ -17,12 +17,8 @@ import type {
 import type { WebSocketLike } from './WebSocketLike'
 
 export interface RoomOptions {
-  /** Restore from a previous snapshot. */
-  initialSnapshot?: RoomSnapshot
-  /** Pluggable persistence backend. */
-  storage?: Storage
-  /** Called when document state changes (for manual persistence). */
-  onDataChange?: (room: Room) => void
+  /** Factory to create persistence backend (called only when room is created). */
+  createStorage?: () => Storage
   /** Called when a session disconnects. */
   onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
   /** Minimum ms between persistence saves. Defaults to 10000 (10s). */
@@ -50,7 +46,6 @@ export class Room {
 
   // --- options ---
   private storage?: Storage
-  private onDataChange?: (room: Room) => void
   private onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
 
   // --- throttled save ---
@@ -59,21 +54,13 @@ export class Room {
   private closed = false
 
   constructor(options: RoomOptions = {}) {
-    this.storage = options.storage
-    this.onDataChange = options.onDataChange
+    this.storage = options.createStorage?.()
     this.onSessionRemoved = options.onSessionRemoved
     this.saveThrottleMs = options.saveThrottleMs ?? 10_000
-
-    if (options.initialSnapshot) {
-      this.timestamp = options.initialSnapshot.timestamp
-      this.state = { ...options.initialSnapshot.state }
-      this.timestamps = { ...options.initialSnapshot.timestamps }
-    }
   }
 
   /**
-   * Load state from storage. Call this once before connecting clients
-   * if you're using a storage backend and didn't pass initialSnapshot.
+   * Load state from storage. Call this once before connecting clients.
    */
   async load(): Promise<void> {
     if (!this.storage) return
@@ -223,7 +210,7 @@ export class Room {
     if (!hasDoc && !hasEph) return
 
     // Readonly clients get an ack but patches are dropped
-    if (session.permissions !== 'readonly') {
+    if (session.permissions === 'readwrite') {
       this.applyAndBroadcast(session, req)
     }
 
@@ -243,11 +230,11 @@ export class Room {
         serverProtocolVersion: PROTOCOL_VERSION,
       }
       this.sendTo(session, mismatch)
-      // Continue processing - still send document diff
+      return
     }
 
     // Apply patches only for readwrite clients
-    if (session.permissions !== 'readonly') {
+    if (session.permissions === 'readwrite') {
       this.applyAndBroadcast(session, req)
     }
 
@@ -454,7 +441,6 @@ export class Room {
   // ---------------------------------------------------------------
 
   private scheduleSave(): void {
-    this.onDataChange?.(this)
     if (!this.storage || this.closed) return
     if (this.saveTimer !== null) return // already scheduled
     this.saveTimer = setTimeout(() => {

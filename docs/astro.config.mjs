@@ -50,6 +50,7 @@ export default defineConfig({
           label: "Editor Store",
           items: [
             { label: "Introduction", slug: "editor-store/introduction" },
+            { label: "How It Works", slug: "editor-store/how-it-works" },
             { label: "Components & Singletons", slug: "editor-store/components-singletons" },
             { label: "Client Setup", slug: "editor-store/client-setup" },
             { label: "Server Setup", slug: "editor-store/server-setup" },
@@ -59,7 +60,11 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          autogenerate: { directory: "reference" },
+          items: [
+            { label: "Woven-ECS", slug: "reference/woven-ecs" },
+            { label: "Editor Store", slug: "reference/editor-store" },
+            { label: "Editor Store Server", slug: "reference/editor-store-server" },
+          ],
         },
       ],
       customCss: ["./src/styles/global.css"],

@@ -150,7 +150,7 @@ const BoundingBox = defineComponent({
 
 This isn't really a best practice, but just in case you need it:
 
-**Direct buffer access.** For maximum performance in hot loops, you can bypass the `read()`/`write()` API and write directly to the underlying TypedArrays. This skips change tracking entirely, so it could be useful if you need to make a change that you don't want to trigger reactions. Use with caution!
+**Direct buffer access.** For maximum performance in hot loops, you can bypass the `read()`/`write()` API and write directly to the underlying TypedArrays. This skips change tracking entirely, so it could be useful if you need to make a change that you don't want to show up in `changed(ctx)` queries. Use with caution!
 
 ```typescript
 const moveSystem = defineSystem((ctx) => {

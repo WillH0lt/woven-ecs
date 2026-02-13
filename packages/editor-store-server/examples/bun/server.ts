@@ -9,7 +9,6 @@ interface WSData {
 const PORT = Number(process.env.PORT) || 8087
 
 const manager = new RoomManager({
-  createStorage: (roomId) => new FileStorage({ dir: './data', roomId }),
   idleTimeout: 60_000,
 })
 
@@ -49,7 +48,9 @@ const server = Bun.serve<WSData>({
   websocket: {
     async open(ws) {
       const { roomId, clientId } = ws.data
-      const room = await manager.getRoom(roomId)
+      const room = await manager.getOrCreateRoom(roomId, {
+        createStorage: () => new FileStorage({ dir: './data', roomId }),
+      })
 
       ws.data.sessionId = room.handleSocketConnect({
         socket: { send: (data) => ws.send(data), close: () => ws.close() },
