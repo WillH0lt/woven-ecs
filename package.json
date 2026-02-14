@@ -5,7 +5,7 @@
   "description": "A multi-threaded Entity Component System (ECS) Framework for TypeScript",
   "repository": "https://github.com/WillH0lt/woven-ecs",
   "author": {
-    "name": "Will Whiteneck",
+    "name": "Will Holt",
     "email": "will@william.land"
   },
   "license": "MIT",
