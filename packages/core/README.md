@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../docs/src/assets/logo.png" alt="Woven ECS Logo" width="50" />
+  <img src="https://raw.githubusercontent.com/WillH0lt/woven-ecs/refs/heads/main/docs/src/assets/logo.png" alt="Woven ECS Logo" width="50" />
 </p>
 
 <p align="center">
