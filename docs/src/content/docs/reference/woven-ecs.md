@@ -297,26 +297,3 @@ const world = new World([Position, Velocity, Time], {
 | `dispose()` | Cleanup and terminate workers |
 
 ---
-
-## Event Types
-
-```typescript
-import { EventType } from '@woven-ecs/core';
-
-EventType.ADDED             // Entity created
-EventType.REMOVED           // Entity removed
-EventType.CHANGED           // Component data modified
-EventType.COMPONENT_ADDED   // Component attached
-EventType.COMPONENT_REMOVED // Component detached
-```
-
----
-
-## Constants
-
-```typescript
-import { SINGLETON_ENTITY_ID } from '@woven-ecs/core';
-
-// Used internally for singleton events
-SINGLETON_ENTITY_ID // 0xFFFFFFFF
-```

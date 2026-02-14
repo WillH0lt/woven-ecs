@@ -27,9 +27,9 @@ https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
 */
 
 /* Remove divider after social icons */
-/* .social-icons::after {
+.social-icons::after {
   display: none;
-} */
+}
 
 /* Smaller hero title */
 .hero h1 {
@@ -40,5 +40,6 @@ https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
 .hero .tagline {
   font-size: clamp(0.75rem, 2.5vw, 1rem);
 }
+
 
 

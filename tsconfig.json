@@ -2,7 +2,7 @@
   "extends": "./tsconfig.options.json",
   "references": [
     { "path": "packages/core" },
-    { "path": "packages/editor-store" },
-    { "path": "packages/editor-store-server" }
+    { "path": "packages/canvas-store" },
+    { "path": "packages/canvas-store-server" }
   ]
 }

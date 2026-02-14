@@ -1964,7 +1964,7 @@ describe('Query', () => {
         currentEntities = trackingQuery.current(ctx)
       })
 
-      // Schedule entity creation via nextSync (like editor.nextTick)
+      // Schedule entity creation via nextSync
       let e1: number
       world.nextSync((ctx) => {
         e1 = createEntity(ctx)
@@ -2037,7 +2037,7 @@ describe('Query', () => {
         addedEntitiesSystem2 = trackingQuery.added(ctx)
       })
 
-      // Schedule entity creation via nextSync (like editor.nextTick)
+      // Schedule entity creation via nextSync
       let e1: number
       world.nextSync((ctx) => {
         e1 = createEntity(ctx)
@@ -2074,7 +2074,7 @@ describe('Query', () => {
         addedEntitiesPhase2 = trackingQuery.added(ctx)
       })
 
-      // Schedule entity creation via nextSync (like editor.nextTick)
+      // Schedule entity creation via nextSync
       let e1: number
       world.nextSync((ctx) => {
         e1 = createEntity(ctx)
@@ -2082,7 +2082,7 @@ describe('Query', () => {
         addComponent(ctx, e1, Velocity, { dx: 1, dy: 2 })
       })
 
-      // Single "tick": sync, then execute phases separately (like Editor does)
+      // Single "tick": sync, then execute phases separately
       world.sync()
       await world.execute(phase1System) // Phase 1
       await world.execute(phase2System) // Phase 2

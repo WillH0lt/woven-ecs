@@ -17,8 +17,8 @@ A high-performance, multi-threaded Entity Component System (ECS) framework for T
 | Package | Description |
 |---------|-------------|
 | [@woven-ecs/core](./packages/core) | Core ECS framework with components, systems, queries, and multi-threading |
-| [@woven-ecs/editor-store](./packages/editor-store) | Persistence, undo/redo, and real-time collaboration for editor applications |
-| [@woven-ecs/editor-store-server](./packages/editor-store-server) | Server for real-time collaboration with @woven-ecs/editor-store clients |
+| [@woven-ecs/canvas-store](./packages/canvas-store) | Persistence, undo/redo, and real-time collaboration for design and whiteboard applications |
+| [@woven-ecs/canvas-store-server](./packages/canvas-store-server) | Server for real-time collaboration with @woven-ecs/canvas-store clients |
 
 ## Installation
 

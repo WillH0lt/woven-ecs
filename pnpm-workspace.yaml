@@ -1,5 +1,5 @@
 packages:
   - "packages/*"
-  - "packages/editor-store-server/examples/*"
+  - "packages/canvas-store-server/examples/*"
   - "examples/*"
   - "docs"
