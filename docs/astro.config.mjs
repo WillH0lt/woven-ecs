@@ -23,11 +23,11 @@ export default defineConfig({
           label: "Bluesky",
           href: "https://bsky.app/profile/william.land",
         },
-        {
-          icon: "discord",
-          label: "Discord",
-          href: "https://discord.gg/your-invite-code",
-        },
+        // {
+        //   icon: "discord",
+        //   label: "Discord",
+        //   href: "https://discord.gg/your-invite-code",
+        // },
         {
           icon: "github",
           label: "GitHub",
