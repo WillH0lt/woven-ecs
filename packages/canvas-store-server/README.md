@@ -1,13 +1,15 @@
-# @woven-ecs/canvas-store-server
+<p align="center">
+  <img src="../../docs/src/assets/logo.png" alt="Woven ECS Logo" width="50" />
+</p>
+
+<p align="center">
+  <a href="https://woven-ecs.dev/canvas-store/server-setup/">Read the Docs →</a>
+</p>
+
+
+# Canvas Store Server
 
 Real-time collaboration server for [@woven-ecs/canvas-store](https://www.npmjs.com/package/@woven-ecs/canvas-store) clients.
-
-## Features
-
-- **Room-based collaboration** - Multiple users editing the same document
-- **Conflict resolution** - Last-write-wins with field-level timestamps
-- **Pluggable storage** - In-memory, file-based, or custom backends
-- **Runtime agnostic** - Works with Node.js, Bun, Deno, or any WebSocket server
 
 ## Installation
 
@@ -15,135 +17,82 @@ Real-time collaboration server for [@woven-ecs/canvas-store](https://www.npmjs.c
 npm install @woven-ecs/canvas-store-server
 ```
 
-## Usage
+## Examples
 
-### With Node.js (ws)
+| Example | Description |
+|---------|-------------|
+| [Node.js](./examples/ws) | WebSocket server using the `ws` library. |
+| [Bun](./examples/bun) | Native Bun WebSocket server. |
+
+## Usage
 
 ```typescript
 import { WebSocketServer } from 'ws';
-import { RoomManager, MemoryStorage } from '@woven-ecs/canvas-store-server';
+import { RoomManager, FileStorage } from '@woven-ecs/canvas-store-server';
 
+const manager = new RoomManager();
 const wss = new WebSocketServer({ port: 8080 });
-const storage = new MemoryStorage();
-const rooms = new RoomManager({ storage });
 
-wss.on('connection', (ws, req) => {
-  const documentId = new URL(req.url, 'http://localhost').searchParams.get('documentId');
+wss.on('connection', async (ws, req) => {
+  const url = new URL(req.url!, 'http://localhost');
+  const roomId = url.searchParams.get('roomId') ?? 'default';
+  const clientId = url.searchParams.get('clientId')!;
 
-  rooms.handleConnection(ws, {
-    documentId,
-    permission: 'read-write',
+  const room = await manager.getOrCreateRoom(roomId, {
+    createStorage: () => new FileStorage({ dir: './data', roomId }),
   });
-});
-```
 
-### With Bun
+  const sessionId = room.handleSocketConnect({
+    socket: ws,
+    clientId,
+    permissions: 'readwrite',
+  });
 
-```typescript
-import { RoomManager, MemoryStorage } from '@woven-ecs/canvas-store-server';
-
-const storage = new MemoryStorage();
-const rooms = new RoomManager({ storage });
-
-Bun.serve({
-  port: 8080,
-  fetch(req, server) {
-    const url = new URL(req.url);
-    if (url.pathname === '/ws') {
-      const documentId = url.searchParams.get('documentId');
-      server.upgrade(req, { data: { documentId } });
-      return;
-    }
-    return new Response('Not found', { status: 404 });
-  },
-  websocket: {
-    open(ws) {
-      rooms.handleConnection(ws, {
-        documentId: ws.data.documentId,
-        permission: 'read-write',
-      });
-    },
-    message(ws, message) {
-      // Handled by RoomManager
-    },
-    close(ws) {
-      // Handled by RoomManager
-    },
-  },
+  ws.on('message', (data) => room.handleSocketMessage(sessionId, String(data)));
+  ws.on('close', () => room.handleSocketClose(sessionId));
 });
 ```
 
 ## Storage Backends
 
-### MemoryStorage
-
-In-memory storage for development and testing:
-
 ```typescript
-import { MemoryStorage } from '@woven-ecs/canvas-store-server';
+import { MemoryStorage, FileStorage } from '@woven-ecs/canvas-store-server';
 
-const storage = new MemoryStorage();
-```
+// In-memory (development)
+new MemoryStorage();
 
-### FileStorage
+// File-based (simple persistence)
+new FileStorage({ dir: './data', roomId: 'doc-123' });
 
-Persist documents to the filesystem:
-
-```typescript
-import { FileStorage } from '@woven-ecs/canvas-store-server';
-
-const storage = new FileStorage({
-  directory: './data',
-});
-```
-
-### Custom Storage
-
-Implement the `Storage` interface for databases like PostgreSQL, Redis, etc:
-
-```typescript
-import type { Storage, RoomSnapshot } from '@woven-ecs/canvas-store-server';
-
+// Custom (implement the Storage interface)
 class PostgresStorage implements Storage {
-  async load(documentId: string): Promise<RoomSnapshot | null> {
-    // Load from database
-  }
-
-  async save(documentId: string, snapshot: RoomSnapshot): Promise<void> {
-    // Save to database
-  }
+  async load(): Promise<RoomSnapshot | null> { /* ... */ }
+  async save(snapshot: RoomSnapshot): Promise<void> { /* ... */ }
 }
-```
-
-## Permissions
-
-Control read/write access per connection:
-
-```typescript
-rooms.handleConnection(ws, {
-  documentId: 'doc-123',
-  permission: 'read-only',  // or 'read-write'
-});
 ```
 
 ## Client
 
-Connect from the browser using [@woven-ecs/canvas-store](https://www.npmjs.com/package/@woven-ecs/canvas-store):
+Connect from the browser using [@woven-ecs/canvas-store](../canvas-store/):
 
 ```typescript
 import { CanvasStore } from '@woven-ecs/canvas-store';
 
 const store = new CanvasStore({
-  documentId: 'doc-123',
   websocket: {
-    url: 'wss://your-server.com/ws',
+    enabled: true,
+    documentId: 'my-document',
+    url: 'wss://your-server.com',
+    clientId: crypto.randomUUID(),
   },
 });
 ```
 
 ## Documentation
 
-- [Full Documentation](https://woven-ecs.dev)
+- [Server Setup](https://woven-ecs.dev/canvas-store/server-setup/)
+- [Client Setup](https://woven-ecs.dev/canvas-store/client-setup/)
+- [API Reference](https://woven-ecs.dev/reference/canvas-store-server/)
 
 ## License
 

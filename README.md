@@ -1,15 +1,25 @@
-![CI](https://github.com/WillH0lt/woven-ecs/actions/workflows/ci.yml/badge.svg)
-[![npm](https://img.shields.io/npm/v/@woven-ecs/core)](https://www.npmjs.com/package/@woven-ecs/core)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <img src="docs/src/assets/logo.png" alt="Woven ECS Logo" width="50" />
+</p>
 
-# woven-ecs
+<p align="center">
+  <a href="https://github.com/WillH0lt/woven-ecs/actions/workflows/ci.yml"><img src="https://github.com/WillH0lt/woven-ecs/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@woven-ecs/core"><img src="https://img.shields.io/npm/v/@woven-ecs/core" alt="npm" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+</p>
 
-A high-performance, multi-threaded Entity Component System (ECS) framework for TypeScript.
+<p align="center">
+  <a href="https://woven-ecs.dev">Read the Docs →</a>
+</p>
 
-- **Multi-threaded** - Run systems in parallel across Web Workers using SharedArrayBuffer
-- **Type-safe** - Full TypeScript support with inferred component types
-- **Data-oriented** - Components stored in typed arrays for cache-friendly access
-- **Reactive queries** - Track entity additions, removals, and component changes
+# Woven-ECS
+
+A high-performance, multithreaded Entity Component System (ECS) framework for TypeScript.
+
+- **Multithreaded**: Execute systems in parallel across worker threads with automatic entity partitioning
+- **Change Tracking**: Query for entities that were added, removed, or changed since last frame
+- **Powerful Queries**: Filter entities by component presence with `with`, `without`, and `any` operators
+- **Entity References**: Reference other entities with automatic validation
 - **Zero dependencies** - Lightweight core with no external runtime dependencies
 
 ## Packages
@@ -30,12 +40,13 @@ npm install @woven-ecs/core
 
 ```typescript
 import {
-  World,
+  addComponent,
+  createEntity,
   defineComponent,
   defineQuery,
   defineSystem,
   field,
-  createEntity,
+  World,
 } from '@woven-ecs/core';
 
 // Define components with typed fields
@@ -67,16 +78,15 @@ const movementSystem = defineSystem((ctx) => {
 // Create the world
 const world = new World([Position, Velocity]);
 
-// On the first sync create an entity with Position and Velocity components
-world.nextSync((ctx) => { 
+// Create an entity with Position and Velocity components
+world.execute((ctx) => { 
   const entity = createEntity(ctx);
-  Position.write(ctx, entity).x = 0;
-  Velocity.write(ctx, entity).x = 1;
+  addComponent(ctx, entity, Position, { x: 0, y: 0 });
+  addComponent(ctx, entity, Velocity, { x: 1, y: 1 });
 })
 
 // Game loop
 function loop() {
-  world.sync();
   world.execute(movementSystem);
   requestAnimationFrame(loop);
 }
@@ -84,42 +94,38 @@ function loop() {
 loop();
 ```
 
-## Multithreading
-
-Run computationally intensive systems across multiple CPU cores:
-
-```typescript
-// physics-worker.ts
-import { setupWorker, defineQuery } from '@woven-ecs/core';
-
-const physicsQuery = defineQuery((q) =>
-  q.with(Position, Velocity)
-);
-
-setupWorker((ctx) => {
-  for (const eid of physicsQuery.current(ctx)) {
-    // Process entities in parallel
-  }
-});
-
-// main.ts
-const physicsSystem = defineWorkerSystem(
-  new URL('./physics-worker.ts', import.meta.url).href,
-  { threads: 4 }
-);
-
-await world.execute(physicsSystem);
-```
-
 ## Documentation
 
-Visit the [documentation site](https://woven-ecs.dev) for guides on:
+Visit [woven-ecs.dev](https://woven-ecs.dev) for guides on:
 
-- [Getting Started](https://woven-ecs.dev/guide/getting-started/)
-- [Components](https://woven-ecs.dev/architecture/components/)
-- [Systems](https://woven-ecs.dev/architecture/systems/)
-- [Queries](https://woven-ecs.dev/architecture/queries/)
-- [Multithreading](https://woven-ecs.dev/advanced/multithreading/)
+- [Quick Start](https://woven-ecs.dev/quick-start/)
+- [World](https://woven-ecs.dev/docs/world/)
+- [Entities](https://woven-ecs.dev/docs/entities/)
+- [Components & Singletons](https://woven-ecs.dev/docs/components-singletons/)
+- [Systems](https://woven-ecs.dev/docs/systems/)
+- [Queries](https://woven-ecs.dev/docs/queries/)
+- [Multithreading](https://woven-ecs.dev/docs/multithreading/)
+- [Best Practices](https://woven-ecs.dev/docs/best-practices/)
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [React Binding](./examples/react-binding) | Integrating woven-ecs with React using `useSyncExternalStore`. |
+| [Three.js + Workers](./examples/worker-system-with-threejs) | Multithreaded particle physics with Three.js rendering.|
+
+## Canvas Store
+
+The [`@woven-ecs/canvas-store`](./packages/canvas-store) and [`@woven-ecs/canvas-store-server`](./packages/canvas-store-server) packages extend Woven-ECS with everything you need to build multiplayer editor applications like infinite canvases or other creative design tools.
+
+- **Real-time Sync** — WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
+- **Local-First** — Your app works offline by default. Data lives on the client and syncs to the server when connected.
+- **Undo/Redo** — Full history tracking with configurable depth. Users can undo and redo changes across sessions.
+- **Persistence** — Automatic IndexedDB storage for offline support. Changes are saved locally and synced when back online.
+- **Migrations** — Version your component schemas with automatic migrations. Evolve your data model without breaking existing documents.
+- **Configurable** — Configure sync behavior per component: persist to server, sync ephemerally, store locally, or skip entirely.
+
+[Learn more →](https://woven-ecs.dev/canvas-store/introduction/)
 
 ## Local Development
 

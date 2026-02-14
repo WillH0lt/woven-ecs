@@ -36,7 +36,7 @@ wss.on('connection', async (ws, req) => {
   })
 
   const sessionId = room.handleSocketConnect({
-    socket: { send: (data) => ws.send(data), close: () => ws.close() },
+    socket: ws,
     clientId,
     permissions: 'readwrite',
   })

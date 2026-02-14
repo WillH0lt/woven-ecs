@@ -52,7 +52,7 @@ wss.on('connection', async (ws, req) => {
   })
 
   const sessionId = room.handleSocketConnect({
-    socket: { send: (data) => ws.send(data), close: () => ws.close() },
+    socket: ws,
     clientId,
     permissions: 'readwrite',
   })
@@ -108,7 +108,7 @@ Each session connects with a permission level: `readwrite` or `readonly`.
 
 ```typescript
 const sessionId = room.handleSocketConnect({
-  socket: { send: (data) => ws.send(data), close: () => ws.close() },
+  socket: ws,
   clientId,
   permissions: 'readonly', // or 'readwrite'
 });

@@ -9,6 +9,8 @@ Set up Canvas Store with persistence, undo/redo, and multiplayer sync:
 import { World } from '@woven-ecs/core';
 import { CanvasStore, Synced } from '@woven-ecs/canvas-store';
 
+import { Position, Velocity, Shape } from './components';
+
 const store = new CanvasStore({
   persistence: {
     enabled: true,

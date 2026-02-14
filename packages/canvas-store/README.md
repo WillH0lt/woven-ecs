@@ -1,14 +1,15 @@
-# @woven-ecs/canvas-store
+<p align="center">
+  <img src="../../docs/src/assets/logo.png" alt="Woven ECS Logo" width="50" />
+</p>
+
+<p align="center">
+  <a href="https://woven-ecs.dev/canvas-store/introduction/">Read the Docs →</a>
+</p>
+
+
+# Canvas Store
 
 Persistence, undo/redo, and real-time collaboration for canvas applications built with [@woven-ecs/core](https://www.npmjs.com/package/@woven-ecs/core).
-
-## Features
-
-- **Undo/Redo** - Full history tracking with configurable depth
-- **Persistence** - Automatic IndexedDB storage for offline support
-- **Real-time collaboration** - WebSocket sync with conflict resolution
-- **Migrations** - Version your component schemas with automatic migrations
-- **Framework agnostic** - Works with any UI framework
 
 ## Installation
 
@@ -16,104 +17,73 @@ Persistence, undo/redo, and real-time collaboration for canvas applications buil
 npm install @woven-ecs/core @woven-ecs/canvas-store
 ```
 
+## Features
+
+- **Real-time Sync** — WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
+- **Local-First** — Your app works offline by default. Data lives on the client and syncs to the server when connected.
+- **Undo/Redo** — Full history tracking with configurable depth. Users can undo and redo changes across sessions.
+- **Persistence** — Automatic IndexedDB storage for offline support. Changes are saved locally and synced when back online.
+- **Migrations** — Version your component schemas with automatic migrations. Evolve your data model without breaking existing documents.
+- **Configurable** — Configure sync behavior per component: persist to server, sync ephemerally, store locally, or skip entirely.
+
 ## Usage
 
 ```typescript
 import { World } from '@woven-ecs/core';
-import {
-  CanvasStore,
-  defineCanvasComponent,
-  defineCanvasSingleton,
-} from '@woven-ecs/canvas-store';
+import { CanvasStore, Synced } from '@woven-ecs/canvas-store';
 
-// Define synced components
-const Rectangle = defineCanvasComponent(
-  {
-    x: field.float32(),
-    y: field.float32(),
-    width: field.float32(),
-    height: field.float32(),
-  },
-  {
-    sync: 'full',    // Sync all fields
-    version: 1,      // Schema version for migrations
-  }
-);
+import { Position, Velocity, Shape } from './components';
 
-// Create the store
+const components = [Position, Velocity, Shape];
+
 const store = new CanvasStore({
-  documentId: 'my-document',
-  usePersistence: true,
-  useHistory: true,
+  persistence: {
+    enabled: true,
+    documentId: 'my-document',
+  },
+  history: {
+    enabled: true,
+  },
   websocket: {
+    enabled: true,
+    documentId: 'my-document',
     url: 'wss://your-server.com',
+    clientId: crypto.randomUUID(),
   },
 });
 
 await store.initialize({
-  components: [Rectangle],
-  singletons: [],
+  components,
 });
 
-// Connect to the ECS world
-const world = new World([Rectangle]);
-store.connectWorld(world);
+// Create world with all components including Synced
+const world = new World([...components, Synced]);
 
-// Undo/redo
-store.undo();
-store.redo();
-```
+function loop() {
+  world.execute((ctx) => {
+    // Sync changes to persistence/network/history
+    store.sync(ctx);
 
-## Sync Behaviors
+    // ...the rest of your loop
+  });
+  requestAnimationFrame(loop);
+}
 
-Control how each component syncs across clients:
-
-```typescript
-// Full sync - all field changes are synchronized
-const Position = defineCanvasComponent({ ... }, { sync: 'full' });
-
-// Partial sync - only specified fields sync
-const Selection = defineCanvasComponent({ ... }, { sync: ['selectedIds'] });
-
-// Local only - no synchronization
-const LocalState = defineCanvasComponent({ ... }, { sync: 'none' });
-```
-
-## Migrations
-
-Handle schema changes across versions:
-
-```typescript
-const Shape = defineCanvasComponent(
-  {
-    x: field.float32(),
-    y: field.float32(),
-    color: field.string(),  // Added in v2
-  },
-  {
-    version: 2,
-    migrations: [
-      {
-        from: 1,
-        to: 2,
-        migrate: (data) => ({
-          ...data,
-          color: '#000000',  // Default for existing shapes
-        }),
-      },
-    ],
-  }
-);
+loop();
 ```
 
 ## Server
 
-For real-time collaboration, use [@woven-ecs/canvas-store-server](https://www.npmjs.com/package/@woven-ecs/canvas-store-server).
+For real-time collaboration, use [@woven-ecs/canvas-store-server](../canvas-store-server/).
 
 ## Documentation
 
-- [Full Documentation](https://woven-ecs.dev)
-- [Core ECS Guide](https://woven-ecs.dev/guide/getting-started/)
+- [Introduction](https://woven-ecs.dev/canvas-store/introduction/)
+- [How It Works](https://woven-ecs.dev/canvas-store/how-it-works/)
+- [Components & Singletons](https://woven-ecs.dev/canvas-store/components-singletons/)
+- [Client Setup](https://woven-ecs.dev/canvas-store/client-setup/)
+- [Server Setup](https://woven-ecs.dev/canvas-store/server-setup/)
+- [API Reference](https://woven-ecs.dev/reference/canvas-store/)
 
 ## License
 
