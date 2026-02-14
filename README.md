@@ -96,8 +96,6 @@ loop();
 
 ## Documentation
 
-Visit [woven-ecs.dev](https://woven-ecs.dev) for guides on:
-
 - [Quick Start](https://woven-ecs.dev/quick-start/)
 - [World](https://woven-ecs.dev/docs/world/)
 - [Entities](https://woven-ecs.dev/docs/entities/)
