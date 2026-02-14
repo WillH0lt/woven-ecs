@@ -8,7 +8,8 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "deploy": "astro build && wrangler pages deploy dist --project-name=woven-ecs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.37.2",
@@ -19,5 +20,8 @@
     "astro-icon": "^1.1.5",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.65.0"
   }
 }
