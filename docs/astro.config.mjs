@@ -9,7 +9,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Woven-ECS",
-      favicon: './src/assets/favicon.ico',
+      favicon: '/favicon.png',
       logo: {
         src: './src/assets/logo.png',
       },
