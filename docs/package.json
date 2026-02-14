@@ -19,8 +19,5 @@
     "astro-icon": "^1.1.5",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.0.0"
-  },
-  "devDependencies": {
-    "wrangler": "^4.65.0"
   }
 }
