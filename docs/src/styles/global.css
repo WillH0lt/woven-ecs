@@ -26,6 +26,22 @@ Add additional Tailwind styles to this file:
 https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
 */
 
+/* White header */
+header.header {
+  background-color: white;
+  border-bottom: 0;
+}
+
+/* Tourney font for site title */
+.site-title {
+  font-weight: 700;
+  color: black;
+}
+
+.content-panel {
+  border: 0;
+}
+
 /* Remove divider after social icons */
 .social-icons::after {
   display: none;

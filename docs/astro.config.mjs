@@ -9,6 +9,10 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Woven-ECS",
+      favicon: './src/assets/logo.png',
+      logo: {
+        src: './src/assets/logo.png',
+      },
       expressiveCode: {
         themes: ["github-dark-default"],
         frames: false,
