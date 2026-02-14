@@ -1,6 +1,6 @@
 {
   "name": "@woven-ecs/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A multi-threaded Entity Component System (ECS) Framework for TypeScript",
   "repository": {
     "type": "git",

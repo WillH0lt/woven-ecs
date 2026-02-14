@@ -1,6 +1,6 @@
 {
   "name": "@woven-ecs/canvas-store-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time collaboration and persistence server for clients using @woven-ecs/canvas-store",
   "repository": {
     "type": "git",
