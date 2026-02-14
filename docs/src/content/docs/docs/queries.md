@@ -163,4 +163,3 @@ unsubscribe();
 ```
 
 This can be useful for UI updates. Subscriptions receive the same reactive lists as systems, but they run immediately when you call `world.sync()` rather than during the system execution phase.
-
