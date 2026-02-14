@@ -37,7 +37,8 @@
     "build:watch": "pnpm build --watch",
     "check:exports": "attw --pack .",
     "test": "vitest --config ../../vitest.config.ts run",
-    "test:watch": "vitest --config ../../vitest.config.ts run --watch"
+    "test:watch": "vitest --config ../../vitest.config.ts run --watch",
+    "prepublishOnly": "pnpm build"
   },
   "devDependencies": {
     "vitest": "^4.0.7"
