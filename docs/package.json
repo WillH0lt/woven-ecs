@@ -9,7 +9,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "deploy": "astro build && wrangler pages deploy dist --project-name=woven-ecs"
+    "deploy": "wrangler pages deploy dist --project-name=woven-ecs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.37.2",
