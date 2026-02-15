@@ -26,10 +26,20 @@ Add additional Tailwind styles to this file:
 https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
 */
 
-/* White header */
+/* Header styling - white by default */
 header.header {
   background-color: white;
   border-bottom: 0;
+  transition: background-color 0.3s ease;
+}
+
+/* Transparent header on splash page until scrolled */
+:has(.ribbons-container) header.header {
+  background-color: transparent;
+}
+
+:has(.ribbons-container).scrolled header.header {
+  background-color: white;
 }
 
 /* Tourney font for site title */

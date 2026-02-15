@@ -1,0 +1,235 @@
+---
+// Animated SVG ribbons for the homepage background
+---
+
+<div class="ribbons-container" aria-hidden="true">
+  <svg
+    viewBox="0 0 1400 900"
+    preserveAspectRatio="xMidYMid slice"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <defs>
+      <!-- Gradient definitions for depth -->
+      <linearGradient id="orange-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#d96c3c"></stop>
+        <stop offset="50%" stop-color="#e07842"></stop>
+        <stop offset="100%" stop-color="#c45a2a"></stop>
+      </linearGradient>
+      <linearGradient id="teal-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#3d7a7a"></stop>
+        <stop offset="50%" stop-color="#4a8f8f"></stop>
+        <stop offset="100%" stop-color="#2d6363"></stop>
+      </linearGradient>
+      <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#e8b84a"></stop>
+        <stop offset="50%" stop-color="#f0c65a"></stop>
+        <stop offset="100%" stop-color="#d4a43a"></stop>
+      </linearGradient>
+      <linearGradient id="mint-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#7dc4b0"></stop>
+        <stop offset="50%" stop-color="#8fd4c0"></stop>
+        <stop offset="100%" stop-color="#6ab4a0"></stop>
+      </linearGradient>
+      <linearGradient id="cream-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#e8e4dc"></stop>
+        <stop offset="50%" stop-color="#f0ece4"></stop>
+        <stop offset="100%" stop-color="#dcd8d0"></stop>
+      </linearGradient>
+    </defs>
+
+    <!-- Mint ribbon - upper sweep with diagonal slope -->
+    <path
+      class="ribbon ribbon-mint"
+      d="M -100 80
+         C 100 50, 250 230, 400 200
+         S 600 160, 800 280
+         S 1000 380, 1200 360
+         S 1400 470, 1600 520"
+      fill="none"
+      stroke="url(#mint-grad)"
+      stroke-width="12"
+      stroke-linecap="round"></path>
+
+    <!-- Orange ribbon - upper-mid sweep with diagonal slope -->
+    <path
+      class="ribbon ribbon-orange"
+      d="M -50 -50
+         C 150 60, 300 30, 500 180
+         S 700 330, 900 300
+         S 1100 250, 1300 420
+         S 1500 580, 1600 580"
+      fill="none"
+      stroke="url(#orange-grad)"
+      stroke-width="14"
+      stroke-linecap="round"></path>
+
+    <!-- Gold ribbon - middle sweep with diagonal slope -->
+    <path
+      class="ribbon ribbon-gold"
+      d="M -100 200
+         C 100 280, 250 220, 450 320
+         S 650 430, 850 380
+         S 1050 320, 1250 480
+         S 1450 680, 1600 680"
+      fill="none"
+      stroke="url(#gold-grad)"
+      stroke-width="11"
+      stroke-linecap="round"></path>
+
+    <!-- Teal ribbon - lower-mid sweep with diagonal slope -->
+    <path
+      class="ribbon ribbon-teal"
+      d="M -50 350
+         C 150 310, 300 470, 500 440
+         S 700 390, 900 530
+         S 1100 670, 1300 630
+         S 1500 770, 1600 820"
+      fill="none"
+      stroke="url(#teal-grad)"
+      stroke-width="12"
+      stroke-linecap="round"></path>
+
+    <!-- Second orange ribbon - crossing diagonal -->
+    <path
+      class="ribbon ribbon-orange-2"
+      d="M -50 140
+         C 150 100, 400 260, 600 240
+         S 800 200, 1000 350
+         S 1200 500, 1400 480
+         S 1550 610, 1600 660"
+      fill="none"
+      stroke="url(#orange-grad)"
+      stroke-width="10"
+      stroke-linecap="round"
+      opacity="0.7"></path>
+  </svg>
+</div>
+
+<style>
+  .ribbons-container {
+    /* Animation timing */
+    --ribbon-duration: 10s;
+
+    /* Movement distances */
+    --ribbon-move-x: 15px;
+    --ribbon-move-y: 20px;
+    --ribbon-rotate: 1deg;
+
+    /* Opacity */
+    --ribbon-opacity: 0.35;
+
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+  }
+
+  .ribbons-container svg {
+    width: 100%;
+    height: 100%;
+    opacity: var(--ribbon-opacity);
+  }
+
+  .ribbon {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
+  }
+
+  /* Dramatic floating animation */
+  @keyframes float-1 {
+    0%,
+    100% {
+      transform: translateY(0) translateX(0) rotate(0deg);
+    }
+    25% {
+      transform: translateY(calc(var(--ribbon-move-y) * -0.6))
+        translateX(calc(var(--ribbon-move-x) * 0.5))
+        rotate(calc(var(--ribbon-rotate) * 0.5));
+    }
+    50% {
+      transform: translateY(calc(var(--ribbon-move-y) * -1))
+        translateX(var(--ribbon-move-x)) rotate(var(--ribbon-rotate));
+    }
+    75% {
+      transform: translateY(calc(var(--ribbon-move-y) * -0.5))
+        translateX(calc(var(--ribbon-move-x) * 0.7))
+        rotate(calc(var(--ribbon-rotate) * 0.3));
+    }
+  }
+
+  @keyframes float-2 {
+    0%,
+    100% {
+      transform: translateY(0) translateX(0) rotate(0deg);
+    }
+    25% {
+      transform: translateY(calc(var(--ribbon-move-y) * 0.5))
+        translateX(calc(var(--ribbon-move-x) * -0.7))
+        rotate(calc(var(--ribbon-rotate) * -0.5));
+    }
+    50% {
+      transform: translateY(calc(var(--ribbon-move-y) * 0.9))
+        translateX(calc(var(--ribbon-move-x) * -1.2))
+        rotate(calc(var(--ribbon-rotate) * -1));
+    }
+    75% {
+      transform: translateY(calc(var(--ribbon-move-y) * 0.4))
+        translateX(calc(var(--ribbon-move-x) * -0.5))
+        rotate(calc(var(--ribbon-rotate) * -0.3));
+    }
+  }
+
+  @keyframes float-3 {
+    0%,
+    100% {
+      transform: translateY(0) translateX(0) rotate(0deg);
+    }
+    33% {
+      transform: translateY(calc(var(--ribbon-move-y) * -0.75))
+        translateX(calc(var(--ribbon-move-x) * -0.8))
+        rotate(calc(var(--ribbon-rotate) * -0.7));
+    }
+    66% {
+      transform: translateY(calc(var(--ribbon-move-y) * 0.6))
+        translateX(calc(var(--ribbon-move-x) * 0.7))
+        rotate(calc(var(--ribbon-rotate) * 0.7));
+    }
+  }
+
+  .ribbon-mint {
+    animation: float-1 calc(var(--ribbon-duration) * 0.8) ease-in-out infinite;
+  }
+
+  .ribbon-orange {
+    animation: float-2 var(--ribbon-duration) ease-in-out infinite;
+  }
+
+  .ribbon-gold {
+    animation: float-3 calc(var(--ribbon-duration) * 1.2) ease-in-out infinite;
+  }
+
+  .ribbon-teal {
+    animation: float-1 calc(var(--ribbon-duration) * 1.4) ease-in-out infinite;
+    animation-delay: calc(var(--ribbon-duration) * -0.4);
+  }
+
+  .ribbon-cream {
+    animation: float-2 var(--ribbon-duration) ease-in-out infinite;
+    animation-delay: calc(var(--ribbon-duration) * -0.2);
+  }
+
+  .ribbon-orange-2 {
+    animation: float-3 calc(var(--ribbon-duration) * 1.2) ease-in-out infinite;
+    animation-delay: calc(var(--ribbon-duration) * -0.6);
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .ribbon {
+      animation: none;
+    }
+  }
+</style>

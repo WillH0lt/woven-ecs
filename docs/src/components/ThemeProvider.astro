@@ -1,5 +1,21 @@
 ---
+
 ---
+
 <script is:inline>
-  document.documentElement.dataset.theme = 'light';
+  document.documentElement.dataset.theme = "light";
+
+  // Add scrolled class for header fade effect
+  const scrollThreshold = 50;
+
+  function updateScrollState() {
+    if (window.scrollY > scrollThreshold) {
+      document.documentElement.classList.add("scrolled");
+    } else {
+      document.documentElement.classList.remove("scrolled");
+    }
+  }
+
+  window.addEventListener("scroll", updateScrollState, { passive: true });
+  updateScrollState();
 </script>
