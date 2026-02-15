@@ -173,6 +173,6 @@ loop();
 
 ## Next Steps
 
-- [Components](/architecture/components/) - Learn about all available field types
-- [Systems](/architecture/systems/) - Explore worker systems for multithreading
-- [Queries](/architecture/queries/) - Master change tracking queries
+- [Components](/docs/components/) - Learn about all available field types
+- [Systems](/docs/systems/) - Explore worker systems for multithreading
+- [Queries](/docs/queries/) - Master change tracking queries
