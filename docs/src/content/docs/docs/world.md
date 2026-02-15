@@ -8,7 +8,7 @@ A world serves as the container for all your entities, components, and systems. 
 ## Creating a World
 
 ```typescript
-import { World } from 'woven-ecs';
+import { World } from '@woven-ecs/core';
 import { Position, Velocity, Health } from './components';
 
 const world = new World([Position, Velocity, Health], {
@@ -121,7 +121,7 @@ const world = new World(components, {
 Access resources from within systems:
 
 ```typescript
-import { getResources } from 'woven-ecs';
+import { getResources } from '@woven-ecs/core';
 
 const renderSystem = defineSystem((ctx) => {
   const { renderer, camera } = getResources(ctx);

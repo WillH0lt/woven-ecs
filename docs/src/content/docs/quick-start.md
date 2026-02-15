@@ -116,6 +116,7 @@ import {
   defineSingleton,
   field,
   createEntity,
+  addComponent,
   type Context,
   type QueryBuilder,
 } from '@woven-ecs/core';
@@ -173,6 +174,6 @@ loop();
 
 ## Next Steps
 
-- [Components](/docs/components/) - Learn about all available field types
+- [Components](/docs/components-singletons/) - Learn about all available field types
 - [Systems](/docs/systems/) - Explore worker systems for multithreading
 - [Queries](/docs/queries/) - Master change tracking queries
