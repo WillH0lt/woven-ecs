@@ -13,14 +13,10 @@ import { Position, Velocity, Shape } from './components';
 
 const store = new CanvasStore({
   persistence: {
-    enabled: true,
     documentId: 'my-document',
   },
-  history: {
-    enabled: true,
-  },
+  history: true,
   websocket: {
-    enabled: true,
     documentId: 'my-document',
     url: 'wss://your-server.com',
     clientId: crypto.randomUUID(),
@@ -61,21 +57,21 @@ loop();
 | Option | Type | Description |
 |--------|------|-------------|
 | `persistence` | `PersistenceOptions` | Persistence configuration. See below. |
-| `history` | `HistoryOptions` | History/undo-redo configuration. See below. |
+| `history` | `HistoryOptions \| true` | History/undo-redo configuration. Pass `true` for defaults. See below. |
 | `websocket` | `WebsocketOptions` | WebSocket configuration. See below. |
 
 ### Persistence Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | `boolean` | Required | Enable IndexedDB persistence. |
 | `documentId` | `string` | Required | Unique identifier for the document. Used to namespace IndexedDB storage. |
 
 ### History Options
 
+Pass `true` to enable with defaults, or an object to customize:
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | `boolean` | Required | Enable undo/redo functionality. |
 | `commitCheckpointAfterFrames` | `number` | `60` | Number of quiet frames (no mutations) before committing pending changes to the undo stack. |
 | `maxHistoryStackSize` | `number` | `100` | Maximum number of undo steps to keep in history. Older entries are discarded. |
 
@@ -83,7 +79,6 @@ loop();
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | `boolean` | `false` | Enable WebSocket multiplayer sync. |
 | `documentId` | `string` | Required | Unique identifier for the document on the server. |
 | `url` | `string` | Required | WebSocket server URL (e.g., `wss://your-server.com`). |
 | `clientId` | `string` | Required | Unique identifier for this client. This ID gets sent to other users when broadcasting changes. |
@@ -99,7 +94,9 @@ loop();
 // Track connection status via callback
 const store = new CanvasStore({
   websocket: {
-    // ...other options
+    documentId: 'my-document',
+    url: 'wss://your-server.com',
+    clientId: crypto.randomUUID(),
     onConnectivityChange: (isOnline) => {
       console.log(isOnline ? 'Connected to server' : 'Disconnected from server');
     },
@@ -129,7 +126,6 @@ When the client detects a version mismatch with the server (e.g. due to a new de
 ```typescript
 const store = new CanvasStore({
   websocket: {
-    enabled: true,
     documentId: 'my-doc',
     url: 'wss://server.com',
     clientId: crypto.randomUUID(),

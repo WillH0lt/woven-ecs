@@ -14,16 +14,13 @@ Creates a canvas-store instance.
 ```typescript
 const store = new CanvasStore({
   persistence: {
-    enabled: true,
     documentId: 'my-document',
   },
   history: {
-    enabled: true,
     commitCheckpointAfterFrames: 60,
     maxHistoryStackSize: 100,
   },
   websocket: {
-    enabled: true,
     documentId: 'my-document',
     url: 'wss://api.example.com',
     clientId: crypto.randomUUID(),
@@ -36,21 +33,21 @@ const store = new CanvasStore({
 | Option | Type | Description |
 |--------|------|-------------|
 | `persistence` | `PersistenceOptions` | Persistence adapter options |
-| `history` | `HistoryOptions` | History/undo-redo adapter options |
+| `history` | `HistoryOptions \| true` | History/undo-redo adapter options. Pass `true` for defaults. |
 | `websocket` | `WebsocketOptions` | WebSocket adapter options |
 
 ### PersistenceOptions
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `enabled` | `boolean` | Enable IndexedDB persistence |
 | `documentId` | `string` | Unique identifier for the document |
 
 ### HistoryOptions
 
+Pass `true` to enable with defaults, or an object to customize:
+
 | Option | Type | Description |
 |--------|------|-------------|
-| `enabled` | `boolean` | Enable undo/redo support |
 | `commitCheckpointAfterFrames` | `number` | Frames of inactivity before committing (default: 60) |
 | `maxHistoryStackSize` | `number` | Maximum undo steps to keep (default: 100) |
 
@@ -58,7 +55,6 @@ const store = new CanvasStore({
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `enabled` | `boolean` | Enable WebSocket sync |
 | `documentId` | `string` | Unique identifier for the document |
 | `url` | `string` | WebSocket server URL |
 | `clientId` | `string` | Unique client identifier |

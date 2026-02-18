@@ -71,14 +71,10 @@ import { CanvasStore, Synced } from '@woven-ecs/canvas-store';
 
 const store = new CanvasStore({
   persistence: {
-    enabled: true,
     documentId: 'my-document',
   },
-  history: {
-    enabled: true,
-  },
+  history: true,
   websocket: {
-    enabled: true,
     documentId: 'my-document',
     url: 'wss://your-server.com',
     clientId: crypto.randomUUID(),

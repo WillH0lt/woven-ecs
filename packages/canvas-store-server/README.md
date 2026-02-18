@@ -80,7 +80,6 @@ import { CanvasStore } from '@woven-ecs/canvas-store';
 
 const store = new CanvasStore({
   websocket: {
-    enabled: true,
     documentId: 'my-document',
     url: 'wss://your-server.com',
     clientId: crypto.randomUUID(),

@@ -14,12 +14,10 @@ export interface CanvasStoreInitOptions {
 }
 
 export interface PersistenceOptions {
-  enabled: boolean
   documentId: string
 }
 
 export interface HistoryOptions {
-  enabled: boolean
   /** Number of quiet frames before committing pending changes to history. Default: 60 */
   commitCheckpointAfterFrames?: number
   /** Maximum number of undo steps to keep in history. Default: 100 */
@@ -27,7 +25,6 @@ export interface HistoryOptions {
 }
 
 export interface WebsocketOptions {
-  enabled: boolean
   documentId: string
   url: string
   clientId: string
@@ -42,7 +39,8 @@ export interface WebsocketOptions {
  */
 export interface CanvasStoreOptions {
   persistence?: PersistenceOptions
-  history?: HistoryOptions
+  /** Pass `true` to enable with defaults, or an object to customize options */
+  history?: HistoryOptions | true
   websocket?: WebsocketOptions
 }
 
@@ -77,7 +75,7 @@ export class CanvasStore {
     })
     this.adapters.push(this.ecsAdapter)
 
-    if (this.options.persistence?.enabled) {
+    if (this.options.persistence) {
       this.persistenceAdapter = new PersistenceAdapter({
         documentId: this.options.persistence.documentId,
         components,
@@ -86,24 +84,25 @@ export class CanvasStore {
       this.adapters.push(this.persistenceAdapter)
     }
 
-    if (this.options.history?.enabled) {
+    if (this.options.history) {
+      const historyOpts = this.options.history === true ? {} : this.options.history
       this.historyAdapter = new HistoryAdapter({
         components,
         singletons,
-        commitCheckpointAfterFrames: this.options.history.commitCheckpointAfterFrames,
-        maxHistoryStackSize: this.options.history.maxHistoryStackSize,
+        commitCheckpointAfterFrames: historyOpts.commitCheckpointAfterFrames,
+        maxHistoryStackSize: historyOpts.maxHistoryStackSize,
       })
       this.adapters.push(this.historyAdapter)
     }
 
-    if (this.options.websocket?.enabled) {
+    if (this.options.websocket) {
       this.websocketAdapter = new WebsocketAdapter({
         documentId: this.options.websocket.documentId,
         url: this.options.websocket.url,
         clientId: this.options.websocket.clientId,
         startOffline: this.options.websocket.startOffline,
         token: this.options.websocket.token,
-        usePersistence: this.options.persistence?.enabled ?? false,
+        usePersistence: !!this.options.persistence,
         onVersionMismatch: this.options.websocket.onVersionMismatch,
         onConnectivityChange: this.options.websocket.onConnectivityChange,
         components,
