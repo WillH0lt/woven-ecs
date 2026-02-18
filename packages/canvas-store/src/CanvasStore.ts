@@ -27,7 +27,7 @@ export interface HistoryOptions {
 }
 
 export interface WebsocketOptions {
-  enabled?: boolean
+  enabled: boolean
   documentId: string
   url: string
   clientId: string
