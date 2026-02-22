@@ -138,6 +138,7 @@ export class WebsocketAdapter implements Adapter {
     this.inFlight.clear()
     return new Promise<void>((resolve, reject) => {
       const url = new URL(this.url)
+      url.searchParams.set('roomId', this.documentId)
       url.searchParams.set('clientId', this.clientId)
       if (this.token) url.searchParams.set('token', this.token)
       const ws = new WebSocket(url.toString())
