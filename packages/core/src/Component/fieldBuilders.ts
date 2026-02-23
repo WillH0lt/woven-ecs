@@ -15,8 +15,10 @@ import type {
 /**
  * Symbol for accessing schema default value.
  * Hidden from users to keep the builder API clean.
+ * Uses Symbol.for() to ensure the symbol is shared across module duplicates
+ * that may occur due to bundler code-splitting.
  */
-export const schemaDefault = Symbol('schemaDefault')
+export const schemaDefault = Symbol.for('__woven_ecs_schema_default__')
 
 /**
  * Abstract base class for all field builders.

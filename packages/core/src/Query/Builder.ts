@@ -6,8 +6,10 @@ import { QueryMasks } from './Masks'
 /**
  * Symbol for building query masks.
  * Hidden from users to keep the QueryBuilder API clean.
+ * Uses Symbol.for() to ensure the symbol is shared across module duplicates
+ * that may occur due to bundler code-splitting.
  */
-export const buildQuery = Symbol('buildQuery')
+export const buildQuery = Symbol.for('__woven_ecs_build_query__')
 
 function createEmptyMask(bytes: number): Uint8Array {
   return new Uint8Array(bytes)
