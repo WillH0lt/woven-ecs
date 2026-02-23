@@ -44,10 +44,23 @@ export const SINGLETON_ENTITY_ID = 0xffffffff
 const SINGLETON_INDEX = 0
 
 /**
- * Shared counter for component and singleton definition IDs.
- * This ensures no ID collisions between ComponentDef and SingletonDef.
+ * Global key for the shared definition ID counter.
+ * Using globalThis ensures the counter is shared even if the module
+ * is duplicated across chunks by bundlers like Vite/Rollup.
  */
-let sharedDefIdCounter = 0
+const WOVEN_ECS_DEF_ID_KEY = Symbol.for('__woven_ecs_def_id_counter__')
+
+/**
+ * Get the shared counter object from globalThis.
+ * Creates it if it doesn't exist.
+ */
+function getSharedCounter(): { value: number } {
+  const g = globalThis as Record<symbol, { value: number }>
+  if (!g[WOVEN_ECS_DEF_ID_KEY]) {
+    g[WOVEN_ECS_DEF_ID_KEY] = { value: 0 }
+  }
+  return g[WOVEN_ECS_DEF_ID_KEY]
+}
 
 /**
  * Runtime component storage using TypedArrays.
@@ -396,7 +409,7 @@ export class ComponentDef<T extends ComponentSchema> {
   readonly isSingleton: boolean
 
   constructor(schema: T, isSingleton: boolean = false) {
-    this._defId = sharedDefIdCounter++
+    this._defId = getSharedCounter().value++
     this.schema = schema
     this.isSingleton = isSingleton
   }
@@ -408,7 +421,13 @@ export class ComponentDef<T extends ComponentSchema> {
   _getInstance(ctx: Context): Component<T> {
     const instance = ctx.components[this._defId] as Component<T> | undefined
     if (!instance) {
-      throw new Error(`Component "${this.constructor.name}" is not registered with this World.`)
+      // Use this.name if available (e.g., CanvasComponentDef), otherwise fall back to constructor name
+      const name = (this as any).name ?? this.constructor.name
+      const registeredIds = Object.keys(ctx.components).join(', ')
+      throw new Error(
+        `Component "${name}" (defId=${this._defId}) is not registered with this World. ` +
+          `Registered defIds: [${registeredIds}]`,
+      )
     }
     return instance
   }
@@ -587,7 +606,7 @@ export class SingletonDef<T extends ComponentSchema> {
   readonly isSingleton: true = true
 
   constructor(schema: T) {
-    this._defId = sharedDefIdCounter++
+    this._defId = getSharedCounter().value++
     this.schema = schema
   }
 
@@ -597,13 +616,13 @@ export class SingletonDef<T extends ComponentSchema> {
    */
   _getInstance(ctx: Context): Component<T> {
     const instance = ctx.components[this._defId] as Component<T> | undefined
+    // Use this.name if available (e.g., CanvasSingletonDef), otherwise fall back to constructor name
+    const name = (this as any).name ?? this.constructor.name
     if (!instance) {
-      throw new Error(`Singleton "${this.constructor.name}" is not registered with this World.`)
+      throw new Error(`Singleton "${name}" is not registered with this World.`)
     }
     if (!instance.isSingleton) {
-      throw new Error(
-        `Component "${this.constructor.name}" is not a singleton. Use defineSingleton() to create singletons.`,
-      )
+      throw new Error(`Component "${name}" is not a singleton. Use defineSingleton() to create singletons.`)
     }
     return instance
   }

@@ -85,7 +85,7 @@ describe('WebsocketAdapter', () => {
       const adapter = createAdapter()
       await adapter.init()
       expect(mockWs).toBeDefined()
-      expect(mockWs.url).toBe('ws://localhost:8080/?clientId=client-1')
+      expect(mockWs.url).toBe('ws://localhost:8080/?roomId=test-doc&clientId=client-1')
     })
 
     it('rejects on connection error', async () => {
