@@ -6,7 +6,7 @@
     "dev": "tsx watch server.ts"
   },
   "dependencies": {
-    "@woven-ecs/canvas-store-server": "workspace:*",
+    "@woven-ecs/canvas-store-server": "workspace:^",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "@woven-ecs/canvas-store",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Persistence, undo/redo, and real-time collaboration for canvas applications built with woven-ecs",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@woven-ecs/core": "workspace:*",
+    "@woven-ecs/core": "workspace:^",
     "idb": "^8.0.3"
   },
   "devDependencies": {

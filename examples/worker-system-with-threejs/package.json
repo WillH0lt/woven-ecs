@@ -16,7 +16,7 @@
     "vite": "^7.2.4"
   },
   "dependencies": {
-    "@woven-ecs/core": "workspace:*",
+    "@woven-ecs/core": "workspace:^",
     "stats.js": "^0.17.0",
     "three": "^0.181.2",
     "tweakpane": "^4.0.5"
