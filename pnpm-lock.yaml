@@ -88,7 +88,7 @@ importers:
   examples/react-binding:
     dependencies:
       '@woven-ecs/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/core
       react:
         specifier: ^19.2.0
@@ -116,7 +116,7 @@ importers:
   examples/worker-system-with-threejs:
     dependencies:
       '@woven-ecs/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/core
       stats.js:
         specifier: ^0.17.0
@@ -147,7 +147,7 @@ importers:
   packages/canvas-store:
     dependencies:
       '@woven-ecs/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       idb:
         specifier: ^8.0.3
@@ -182,7 +182,7 @@ importers:
   packages/canvas-store-server/examples/ws:
     dependencies:
       '@woven-ecs/canvas-store-server':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../..
       ws:
         specifier: ^8.18.0
