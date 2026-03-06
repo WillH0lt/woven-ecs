@@ -12,7 +12,6 @@
   "engines": {
     "pnpm": ">=8"
   },
-  "packageManager": "pnpm@8.13.0",
   "scripts": {
     "build": "turbo run build",
     "build:watch": "turbo run build:watch",
