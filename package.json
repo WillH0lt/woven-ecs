@@ -9,6 +9,7 @@
     "email": "will@william.land"
   },
   "license": "MIT",
+  "packageManager": "pnpm@10",
   "engines": {
     "pnpm": ">=8"
   },
