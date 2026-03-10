@@ -357,4 +357,8 @@ export class EcsAdapter implements Adapter {
   close(): void {
     // No resources to clean up
   }
+
+  getState(): Record<string, ComponentData> {
+    return this.prevState
+  }
 }

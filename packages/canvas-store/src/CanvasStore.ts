@@ -6,7 +6,7 @@ import { PersistenceAdapter } from './adapters/Persistence'
 import { WebsocketAdapter } from './adapters/Websocket'
 import type { AnyCanvasComponentDef } from './CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from './CanvasSingletonDef'
-import type { Mutation } from './types'
+import type { ComponentData, Mutation } from './types'
 
 export interface CanvasStoreInitOptions {
   components: AnyCanvasComponentDef[]
@@ -148,6 +148,11 @@ export class CanvasStore {
 
   canRedo(): boolean {
     return this.historyAdapter?.canRedo() ?? false
+  }
+
+  getState(): Record<string, ComponentData> {
+    if (!this.ecsAdapter) return {}
+    return this.ecsAdapter.getState()
   }
 
   /**
