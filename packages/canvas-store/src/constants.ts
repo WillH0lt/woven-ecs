@@ -3,6 +3,7 @@ export const Origin = {
   History: 2,
   Persistence: 3,
   Websocket: 4,
+  Snapshot: 5,
 } as const
 
 export type Origin = (typeof Origin)[keyof typeof Origin]

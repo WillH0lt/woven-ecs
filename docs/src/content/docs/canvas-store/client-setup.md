@@ -59,6 +59,7 @@ loop();
 | `persistence` | `PersistenceOptions` | Persistence configuration. See below. |
 | `history` | `HistoryOptions \| true` | History/undo-redo configuration. Pass `true` for defaults. See below. |
 | `websocket` | `WebsocketOptions` | WebSocket configuration. See below. |
+| `initialState` | `Record<string, ComponentData>` | Initial state snapshot to load on the first sync. Useful for seeding a document with pre-built content. |
 
 ### Persistence Options
 
@@ -87,6 +88,28 @@ Pass `true` to enable with defaults, or an object to customize:
 | `onVersionMismatch` | `function` | `undefined` | Callback invoked when server reports a protocol version mismatch. Receives the server's protocol version number. |
 | `onConnectivityChange` | `function` | `undefined` | Callback invoked when connection status changes. Receives a boolean (`true` when connected, `false` when disconnected). |
 
+
+## Initial State
+
+You can seed a document with pre-built content by passing an `initialState` snapshot. This is applied once on the first `sync()` call, before any adapter pulls. It's useful for templates, default documents, or restoring a saved snapshot.
+
+```typescript
+const store = new CanvasStore({
+  initialState: {
+    'entity-1/Block': { _exists: true, position: [100, 200], size: [50, 50] },
+    'entity-1/Shape': { _exists: true, kind: 'square' },
+    'SINGLETON/Camera': { _exists: true, zoom: 1.5 },
+  },
+  history: true,
+});
+
+await store.initialize({
+  components: [Block, Shape],
+  singletons: [Camera],
+});
+```
+
+The initial state uses the same key format as patches: `"<stableId>/<componentName>"` for components and `"SINGLETON/<singletonName>"` for singletons. Use store.getState() to generate the initial state value you want to pass into your app.
 
 ## Connection Management
 

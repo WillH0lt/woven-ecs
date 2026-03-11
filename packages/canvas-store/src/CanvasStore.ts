@@ -6,6 +6,7 @@ import { PersistenceAdapter } from './adapters/Persistence'
 import { WebsocketAdapter } from './adapters/Websocket'
 import type { AnyCanvasComponentDef } from './CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from './CanvasSingletonDef'
+import { Origin } from './constants'
 import type { ComponentData, Mutation } from './types'
 
 export interface CanvasStoreInitOptions {
@@ -42,6 +43,8 @@ export interface CanvasStoreOptions {
   /** Pass `true` to enable with defaults, or an object to customize options */
   history?: HistoryOptions | true
   websocket?: WebsocketOptions
+  /** Initial state snapshot to load on the first sync. */
+  initialState?: Record<string, ComponentData>
 }
 
 /**
@@ -62,6 +65,7 @@ export class CanvasStore {
   private websocketAdapter: WebsocketAdapter | null = null
   private persistenceAdapter: PersistenceAdapter | null = null
   private adapters: Adapter[] = []
+  private pendingInitialState: Record<string, ComponentData> | null = null
   private options: CanvasStoreOptions
 
   constructor(options: CanvasStoreOptions) {
@@ -74,6 +78,11 @@ export class CanvasStore {
       singletons,
     })
     this.adapters.push(this.ecsAdapter)
+
+    // Queue initial state for the first sync() call
+    if (this.options.initialState) {
+      this.pendingInitialState = this.options.initialState
+    }
 
     if (this.options.persistence) {
       this.persistenceAdapter = new PersistenceAdapter({
@@ -124,6 +133,17 @@ export class CanvasStore {
 
     // Phase 1: Pull mutations from each adapter
     const allMutations: Mutation[] = []
+
+    // Inject initial state snapshot before any adapter pulls
+    if (this.pendingInitialState) {
+      allMutations.push({
+        patch: this.pendingInitialState,
+        origin: Origin.Snapshot,
+        syncBehavior: 'document',
+      })
+      this.pendingInitialState = null
+    }
+
     for (const adapter of this.adapters) {
       allMutations.push(...adapter.pull())
     }
