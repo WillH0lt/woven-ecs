@@ -34,7 +34,9 @@ export {
   validateMigrations,
 } from './migrations'
 export type {
+  ComponentData,
   InferCanvasComponentType,
+  Patch,
   SyncBehavior,
   VersionMismatchResponse,
 } from './types'
