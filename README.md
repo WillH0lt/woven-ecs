@@ -118,7 +118,7 @@ The [`@woven-ecs/canvas-store`](./packages/canvas-store) and [`@woven-ecs/canvas
 
 - **Real-time Sync** — WebSocket-based multiplayer with conflict resolution. Multiple users can edit the same document simultaneously.
 - **Local-First** — Your app works offline by default. Data lives on the client and syncs to the server when connected.
-- **Undo/Redo** — Full history tracking with configurable depth. Users can undo and redo changes across sessions.
+- **Undo/Redo** — Full history tracking with configurable depth. Support for undo/redo across multiple users with proper conflict resolution.
 - **Persistence** — Automatic IndexedDB storage for offline support. Changes are saved locally and synced when back online.
 - **Migrations** — Version your component schemas with automatic migrations. Evolve your data model without breaking existing documents.
 - **Configurable** — Configure sync behavior per component: persist to server, sync ephemerally, store locally, or skip entirely.

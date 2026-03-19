@@ -55,7 +55,9 @@ export function getBackrefs<T extends ComponentSchema>(
 
   const results: EntityId[] = []
 
-  // Iterate only entities with this component (cached query)
+  // Iterate only entities with this component (cached query).
+  // The query snapshot reflects state at the start of the frame,
+  // consistent with how query.current() works in systems.
   for (const eid of query.current(ctx)) {
     const refValue = readRef(buffer[eid], ctx.entityBuffer, checkExistence)
     if (refValue === targetEntity) {
