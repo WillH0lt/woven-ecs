@@ -79,18 +79,17 @@ export class CanvasStore {
     })
     this.adapters.push(this.ecsAdapter)
 
-    // Queue initial state for the first sync() call
-    if (this.options.initialState) {
-      this.pendingInitialState = this.options.initialState
-    }
-
     if (this.options.persistence) {
       this.persistenceAdapter = new PersistenceAdapter({
         documentId: this.options.persistence.documentId,
         components,
         singletons,
+        initialState: this.options.initialState,
       })
       this.adapters.push(this.persistenceAdapter)
+    } else if (this.options.initialState) {
+      // No persistence — queue initial state for the first sync() call
+      this.pendingInitialState = this.options.initialState
     }
 
     if (this.options.history) {

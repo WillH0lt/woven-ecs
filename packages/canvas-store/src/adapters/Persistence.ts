@@ -10,6 +10,7 @@ export interface PersistenceAdapterOptions {
   documentId: string
   components: AnyCanvasComponentDef[]
   singletons: AnyCanvasSingletonDef[]
+  initialState?: Record<string, ComponentData>
 }
 
 /**
@@ -25,9 +26,11 @@ export class PersistenceAdapter implements Adapter {
   private pendingDocumentPatch: Patch | null = null
   private pendingLocalPatch: Patch | null = null
   private componentsByName: Map<string, AnyCanvasComponentDef | AnyCanvasSingletonDef>
+  private initialState: Record<string, ComponentData> | undefined
 
   constructor(options: PersistenceAdapterOptions) {
     this.documentId = options.documentId
+    this.initialState = options.initialState
 
     this.componentsByName = new Map()
     for (const def of [...options.components, ...options.singletons]) {
@@ -59,7 +62,16 @@ export class PersistenceAdapter implements Adapter {
       mergeDiff[key] = value as ComponentData
     }
 
-    if (Object.keys(mergeDiff).length === 0) return
+    if (Object.keys(mergeDiff).length === 0) {
+      // IndexedDB is empty — seed from initialState if provided
+      if (this.initialState) {
+        for (const [key, value] of Object.entries(this.initialState)) {
+          mergeDiff[key] = value
+          this.store.put(key, value)
+        }
+      }
+      if (Object.keys(mergeDiff).length === 0) return
+    }
 
     // Migrate any out-of-date components
     const patch = migratePatch(mergeDiff, this.componentsByName)
