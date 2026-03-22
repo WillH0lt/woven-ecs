@@ -86,7 +86,7 @@ The `nextSync()` function returns a cancel function if you need to abort the sch
 
 ## Sync
 
-If your world interfaces with the rest of your application though UI events or other code running outside the normal ECS execution flow, you'll need to synchronize changes back to the main thread using `world.sync()` in your game loop:
+Call `world.sync()` once per frame at the start of your game loop:
 
 ```typescript
 function loop() {
@@ -98,11 +98,37 @@ function loop() {
 loop();
 ```
 
-Calling `sync()` does two things:
-1. Executes any callbacks scheduled with `world.nextSync()`
-2. Invokes callbacks for all [subscriptions](/docs/queries/#subscriptions) with their accumulated changes
+Calling `sync()` does three things:
+1. Updates `ctx.time` with the current frame's timing data (`deltaMs`, `elapsedMs`, `frame`)
+2. Executes any callbacks scheduled with `world.nextSync()`
+3. Invokes callbacks for all [subscriptions](/docs/queries/#subscriptions) with their accumulated changes
 
-If you're using these features, you should call `sync()` once per frame, typically at the start of your game loop before executing systems.
+It's recommended to call `sync()` once per frame at the start of your game loop, before executing systems.
+
+### Timing
+
+Every context includes a `time` object with timing information, updated each time `sync()` is called:
+
+```ts
+const movementSystem = defineSystem((ctx) => {
+  const dt = ctx.time.deltaMs / 1000; // seconds since last sync
+
+  for (const eid of movingEntities.current(ctx)) {
+    const pos = Position.write(ctx, eid);
+    const vel = Velocity.read(ctx, eid);
+    pos.x += vel.x * dt;
+    pos.y += vel.y * dt;
+  }
+});
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `time.deltaMs` | number | Milliseconds since the previous `sync()` call. 0 on the first call. |
+| `time.elapsedMs` | number | Total milliseconds elapsed since the first `sync()` call. |
+| `time.frame` | number | Number of times `sync()` has been called. Starts at 0. |
+
+All systems within a frame see the same `time` values.
 
 ## Resources
 

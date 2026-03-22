@@ -75,6 +75,9 @@ export class World {
   private prevSyncEventIndex = 0
 
   private history: History
+  private lastSyncTime: number
+  private startTime: number
+  private frameCount = 0
 
   /**
    * Create a new world instance
@@ -117,6 +120,10 @@ export class World {
     this.worldId = World.worldCounter++
     this.history = new History(maxEvents)
 
+    const now = performance.now()
+    this.lastSyncTime = now
+    this.startTime = now
+
     this.context = {
       entityBuffer,
       eventBuffer,
@@ -129,6 +136,7 @@ export class World {
       threadCount: 1,
       readerId: `world_${this.worldId}`,
       prevEventIndex: 0,
+      time: { deltaMs: 0, elapsedMs: 0, frame: 0 },
       resources: options.resources,
     }
   }
@@ -301,6 +309,15 @@ export class World {
    * ```
    */
   sync(): void {
+    // Update timing
+    const now = performance.now()
+    this.context.time = {
+      deltaMs: now - this.lastSyncTime,
+      elapsedMs: now - this.startTime,
+      frame: this.frameCount++,
+    }
+    this.lastSyncTime = now
+
     const currEventIndex = this.context.eventBuffer.getWriteIndex()
 
     if (this.nextSyncCallbacks.length > 0) {

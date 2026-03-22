@@ -50,49 +50,59 @@ import {
   defineComponent,
   defineQuery,
   defineSystem,
+  removeEntity,
   field,
   World,
 } from '@woven-ecs/core';
 
 // Define components with typed fields
-const Position = defineComponent({
-  x: field.float32(),
-  y: field.float32(),
+const Particle = defineComponent({
+  position: field.tuple(field.float32(), 2),
+  velocity: field.tuple(field.float32(), 2),
+  color: field.tuple(field.uint8(), 4), // RGBA
+  life: field.float32(),
 });
 
-const Velocity = defineComponent({
-  x: field.float32(),
-  y: field.float32(),
-});
+// Query all particles
+const particles = defineQuery((q) => q.with(Particle));
 
-// Define a query to find entities with both components
-const movingEntities = defineQuery((q) =>
-  q.with(Position, Velocity)
-);
+// Spawn a burst of particles
+function emit(ctx, x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 100;
+    const eid = createEntity(ctx);
+    addComponent(ctx, eid, Particle, {
+      position: [x, y],
+      velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+      color: [255, 140, 50, 255],
+      life: 1.0,
+    });
+  }
+}
 
-// Define a system to process matching entities
-const movementSystem = defineSystem((ctx) => {
-  for (const eid of movingEntities.current(ctx)) {
-    const pos = Position.write(ctx, eid);
-    const vel = Velocity.read(ctx, eid);
-    pos.x += vel.x;
-    pos.y += vel.y;
+// Update particles: move, fade, and destroy dead ones
+const particleSystem = defineSystem((ctx) => {
+  const dt = ctx.time.deltaMs / 1000;
+  for (const eid of particles.current(ctx)) {
+    const p = Particle.write(ctx, eid);
+    p.position[0] += p.velocity[0] * dt;
+    p.position[1] += p.velocity[1] * dt;
+    p.life -= dt;
+    if (p.life <= 0) removeEntity(ctx, eid);
   }
 });
 
-// Create the world
-const world = new World([Position, Velocity]);
+// Create the world and run
+const world = new World([Particle]);
 
-// Initialize with an entity
-world.execute((ctx) => {
-  const eid = createEntity(ctx);
-  addComponent(ctx, eid, Position, { x: 0, y: 0 });
-  addComponent(ctx, eid, Velocity, { x: 1, y: 1 });
-});
 
-// Game loop
+// An initial burst of particles
+world.execute((ctx) => emit(ctx, 400, 300, 200));
+
 function loop() {
-  world.execute(movementSystem);
+  world.sync();
+  world.execute(particleSystem);
   requestAnimationFrame(loop);
 }
 

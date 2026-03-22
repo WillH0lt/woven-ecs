@@ -163,6 +163,7 @@ export class WorkerManager {
         type: 'execute',
         threadIndex,
         currEventIndex,
+        time: ctx.time,
       }
       worker.postMessage(executeMessage)
     })

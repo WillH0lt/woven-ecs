@@ -89,6 +89,7 @@ function handleMessage(e: MessageEvent<WorkerIncomingMessage>, self: any): void 
         threadCount: e.data.threadCount,
         readerId: 'worker',
         prevEventIndex: 0,
+        time: { deltaMs: 0, elapsedMs: 0, frame: 0 },
         resources: undefined,
       }
 
@@ -101,6 +102,7 @@ function handleMessage(e: MessageEvent<WorkerIncomingMessage>, self: any): void 
       // Use currEventIndex from message to limit query visibility
       ctx.currEventIndex = e.data.currEventIndex
       ctx.threadIndex = threadIndex
+      ctx.time = e.data.time
       internalContext.execute(ctx)
       // Update prevEventIndex for next execution
       ctx.prevEventIndex = e.data.currEventIndex

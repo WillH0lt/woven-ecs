@@ -50,9 +50,32 @@ export interface Context {
    */
   currEventIndex?: number
   /**
+   * Timing information for the current frame.
+   * Updated each time world.sync() is called.
+   */
+  time: Time
+  /**
    * User-defined resources. Access via getResources<T>(ctx).
    */
   readonly resources: unknown
+}
+
+/** Frame timing information, updated each world.sync() call */
+export interface Time {
+  /**
+   * Milliseconds since the previous sync() call.
+   * 0 on the first call.
+   */
+  deltaMs: number
+  /**
+   * Total milliseconds elapsed since the first sync() call.
+   */
+  elapsedMs: number
+  /**
+   * Number of times sync() has been called.
+   * Starts at 0 and increments each call.
+   */
+  frame: number
 }
 
 /** Entity identifier */
@@ -112,6 +135,7 @@ export interface ExecuteMessage {
   type: 'execute'
   threadIndex: number
   currEventIndex: number
+  time: Time
 }
 
 /** All messages received by worker */

@@ -1576,4 +1576,68 @@ describe('World', () => {
       expect(positionQuery.current(ctx)).toHaveLength(2)
     })
   })
+
+  describe('Timing', () => {
+    it('should update timing on sync()', () => {
+      const Position = defineComponent({ x: field.float32() })
+      const world = new World([Position])
+
+      const timings: { deltaMs: number; elapsedMs: number; frame: number }[] = []
+
+      const system = defineSystem((ctx) => {
+        timings.push({ ...ctx.time })
+      })
+
+      world.sync()
+      world.execute(system)
+
+      world.sync()
+      world.execute(system)
+
+      world.sync()
+      world.execute(system)
+
+      // Frame numbers should increment
+      expect(timings[0].frame).toBe(0)
+      expect(timings[1].frame).toBe(1)
+      expect(timings[2].frame).toBe(2)
+
+      // elapsedMs should be non-decreasing
+      expect(timings[1].elapsedMs).toBeGreaterThanOrEqual(timings[0].elapsedMs)
+      expect(timings[2].elapsedMs).toBeGreaterThanOrEqual(timings[1].elapsedMs)
+
+      // deltaMs should be non-negative
+      expect(timings[0].deltaMs).toBeGreaterThanOrEqual(0)
+      expect(timings[1].deltaMs).toBeGreaterThanOrEqual(0)
+      expect(timings[2].deltaMs).toBeGreaterThanOrEqual(0)
+    })
+
+    it('should provide the same timing to all systems in a frame', async () => {
+      const Position = defineComponent({ x: field.float32() })
+      const world = new World([Position])
+
+      let frameA = -1
+      let frameB = -1
+
+      const systemA = defineSystem((ctx) => {
+        frameA = ctx.time.frame
+      })
+      const systemB = defineSystem((ctx) => {
+        frameB = ctx.time.frame
+      })
+
+      world.sync()
+      await world.execute(systemA, systemB)
+
+      expect(frameA).toBe(0)
+      expect(frameB).toBe(0)
+
+      world.sync()
+      await world.execute(systemA)
+      await world.execute(systemB) // separate execute call, same frame
+
+      expect(frameA).toBe(1)
+      expect(frameB).toBe(1)
+    })
+  })
 })

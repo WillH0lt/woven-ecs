@@ -51,7 +51,7 @@ Structure your game loop into distinct phases that run in a predictable order:
 
 | Phase | Purpose | Examples |
 |-------|---------|----------|
-| **Capture** | Snapshot external state | Record delta time, read keyboard/mouse, sync external data |
+| **Capture** | Snapshot external state | Read keyboard/mouse, sync external data |
 | **Update** | Application/Game logic | application state mutations, gameplay rules, collisions |
 | **Render** | Present to screen | update UI, Draw sprites, render to canvas |
 

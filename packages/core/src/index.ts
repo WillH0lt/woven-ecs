@@ -39,6 +39,6 @@ export {
   type System,
   WorkerSystem,
 } from './System'
-export type { Context, EntityId } from './types'
+export type { Context, EntityId, Time } from './types'
 export { setupWorker } from './Worker'
 export { World } from './World'

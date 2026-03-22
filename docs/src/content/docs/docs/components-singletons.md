@@ -249,8 +249,9 @@ console.log(`Position: ${pos.x}, ${pos.y}, ${pos.z}`);
 
 // Write access - marks component as changed
 const pos = Position.write(ctx, entity);
-pos.x += velocity.x * deltaTime;
-pos.y += velocity.y * deltaTime;
+const dt = ctx.time.deltaMs / 1000;
+pos.x += velocity.x * dt;
+pos.y += velocity.y * dt;
 ```
 
 :::caution
@@ -337,16 +338,10 @@ export const Color = new ColorDef();
 
 ## Singletons
 
-Some data exists once per world rather than per-entity—global configuration, input state, timing information. Use `defineSingleton` for these cases:
+Some data exists once per world rather than per-entity—global configuration, input state. Use `defineSingleton` for these cases:
 
 ```ts
 import { defineSingleton, field } from '@woven-ecs/core';
-
-const Time = defineSingleton({
-  delta: field.float32(),
-  elapsed: field.float32(),
-  frame: field.uint32(),
-});
 
 const GameConfig = defineSingleton({
   gravity: field.float32().default(-9.81),
@@ -360,7 +355,6 @@ Singletons support all the same field types and methods as components.
 
 Singletons are ideal for:
 
-- **Time and frame data**: Delta time, elapsed time, frame count
 - **Input state**: Keyboard, mouse, or gamepad state that systems need to read
 - **Configuration**: Physics constants, rendering settings, game rules
 - **Camera state**: View matrices, zoom level, target position
@@ -371,9 +365,9 @@ Singletons are ideal for:
 Access singletons without specifying an entity ID:
 
 ```ts
-// Read global time
-const time = Time.read(ctx);
-console.log(`Frame ${time.frame}, delta: ${time.delta}ms`);
+// Read configuration
+const config = GameConfig.read(ctx);
+console.log(`Gravity: ${config.gravity}`);
 
 // Update configuration
 const config = GameConfig.write(ctx);
@@ -383,9 +377,6 @@ config.gravity = -15;
 Singletons also support `.copy()`, `.patch()`, and `.snapshot()` just like components:
 
 ```ts
-// Reset time to initial state
-Time.copy(ctx, { delta: 0, elapsed: 0, frame: 0 });
-
 // Update only specific fields
 GameConfig.patch(ctx, { gravity: -20 });
 
