@@ -21,6 +21,8 @@ export interface RoomOptions {
   createStorage?: () => Storage
   /** Called when a session disconnects. */
   onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
+  /**  Called after document patches have been applied to room state. */
+  onDocumentPatch?: (room: Room, patches: Patch[]) => void
   /** Minimum ms between persistence saves. Defaults to 10000 (10s). */
   saveThrottleMs?: number
 }
@@ -47,6 +49,7 @@ export class Room {
   // --- options ---
   private storage?: Storage
   private onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
+  private onDocumentPatch?: (room: Room, patches: Patch[]) => void
 
   // --- throttled save ---
   private saveThrottleMs: number
@@ -56,6 +59,7 @@ export class Room {
   constructor(options: RoomOptions = {}) {
     this.storage = options.createStorage?.()
     this.onSessionRemoved = options.onSessionRemoved
+    this.onDocumentPatch = options.onDocumentPatch
     this.saveThrottleMs = options.saveThrottleMs ?? 10_000
   }
 
@@ -288,7 +292,10 @@ export class Room {
       this.broadcastExcept(session.sessionId, broadcast)
     }
 
-    if (hasDoc) this.scheduleSave()
+    if (hasDoc) {
+      this.scheduleSave()
+      this.onDocumentPatch?.(this, req.documentPatches!)
+    }
   }
 
   // ---------------------------------------------------------------

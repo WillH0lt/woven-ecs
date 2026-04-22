@@ -94,6 +94,77 @@ describe('Room', () => {
       })
     })
 
+    it('calls onDocumentPatch after patches are applied', () => {
+      const onPatch = vi.fn()
+      room = new Room({ onDocumentPatch: onPatch })
+
+      const { sessionId } = connectClient(room, 'alice')
+      const patches = [{ 'entity1/Position': { _exists: true, x: 10, y: 20 } }]
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'patch', messageId: 'msg-1', documentPatches: patches }),
+      )
+
+      expect(onPatch).toHaveBeenCalledTimes(1)
+      expect(onPatch).toHaveBeenCalledWith(room, patches)
+      // State was mutated before the callback fired.
+      expect(room.getSnapshot().state['entity1/Position']).toMatchObject({ x: 10, y: 20 })
+    })
+
+    it('does not call onDocumentPatch for ephemeral-only messages', () => {
+      const onPatch = vi.fn()
+      room = new Room({ onDocumentPatch: onPatch })
+
+      const { sessionId } = connectClient(room, 'alice')
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'msg-1',
+          ephemeralPatches: [{ 'alice/Cursor': { _exists: true, x: 0, y: 0 } }],
+        }),
+      )
+
+      expect(onPatch).not.toHaveBeenCalled()
+    })
+
+    it('does not call onDocumentPatch for readonly clients', () => {
+      const onPatch = vi.fn()
+      room = new Room({ onDocumentPatch: onPatch })
+
+      const { sessionId } = connectClient(room, 'alice', 'readonly')
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'msg-1',
+          documentPatches: [{ 'entity1/Position': { _exists: true, x: 1, y: 1 } }],
+        }),
+      )
+
+      expect(onPatch).not.toHaveBeenCalled()
+    })
+
+    it('calls onDocumentPatch for reconnect-carried document patches', () => {
+      const onPatch = vi.fn()
+      room = new Room({ onDocumentPatch: onPatch })
+
+      const { sessionId } = connectClient(room, 'alice')
+      const patches = [{ 'entity2/Position': { _exists: true, x: 5, y: 5 } }]
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'reconnect',
+          lastTimestamp: 0,
+          protocolVersion: 1,
+          documentPatches: patches,
+        }),
+      )
+
+      expect(onPatch).toHaveBeenCalledTimes(1)
+      expect(onPatch).toHaveBeenCalledWith(room, patches)
+    })
+
     it('tracks sessions', () => {
       connectClient(room, 'alice')
       connectClient(room, 'bob')
