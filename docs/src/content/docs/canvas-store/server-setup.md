@@ -7,75 +7,91 @@ Example server implementations:
 * [Bun server example](https://github.com/WillH0lt/woven-ecs/tree/main/packages/canvas-store-server/examples/bun)
 * [Node.js server example](https://github.com/WillH0lt/woven-ecs/tree/main/packages/canvas-store-server/examples/node)
 
-
-## Node.js with ws
-
-You will need to manually wire RoomManager to your WebSocket server. Here's a minimal example using the `ws` library and file-based storage:
+## Quick Start
 
 ```typescript
 import { createServer } from 'node:http'
-import { FileStorage, RoomManager } from '@woven-ecs/canvas-store-server'
+import { acceptConnection, FileStorage, RoomManager } from '@woven-ecs/canvas-store-server'
 import { WebSocketServer } from 'ws'
 
-const PORT = Number(process.env.PORT) || 8087
+const manager = new RoomManager({ idleTimeout: 60_000 })
 
-const manager = new RoomManager({
-  idleTimeout: 60_000, // Close empty rooms after 60s (default: 30s)
-})
-
-const server = createServer((_req, res) => {
-  res.writeHead(200).end('ok')
-})
-
+const server = createServer((_req, res) => res.writeHead(200).end('ok'))
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', async (ws, req) => {
-  const url = new URL(req.url!, `http://localhost:${PORT}`)
-  const roomId = url.searchParams.get('roomId') ?? 'default'
-  const clientId = url.searchParams.get('clientId')
-  // const token = url.searchParams.get('token')
-
-  if (!clientId) {
-    ws.close(1008, 'Missing clientId query parameter')
+  let conn
+  try {
+    conn = await acceptConnection({
+      socket: ws,
+      url: req.url ?? '',
+      request: req,
+      manager,
+      authorize: async ({ roomId, token }) => {
+        const claims = await validateToken(token) // your verifier
+        if (claims.roomId !== roomId) throw new Error('token does not match this room')
+        return {
+          permissions: claims.canWrite ? 'readwrite' : 'readonly',
+          metadata: { claims }, // optional — exposed via room.getSessionMetadata()
+        }
+      },
+      roomOptions: (roomId) => ({
+        createStorage: () => new FileStorage({ dir: './data', roomId }),
+      }),
+    })
+  } catch (err) {
+    ws.close(1008, (err as Error).message)
     return
   }
 
-  // Example: validate the token and determine permissions.
-  // Replace this with your own authentication logic.
-  // const auth = await validateToken(token);
-  // if (!auth) { ws.close(1008, "Unauthorized"); return; }
-  // const permissions = auth.canWrite ? "readwrite" : "readonly";
-
-  const room = await manager.getOrCreateRoom(roomId, {
-    saveThrottleMs: 5_000,
-    createStorage: () => new FileStorage({ dir: './data', roomId }),
-  })
-
-  const sessionId = room.handleSocketConnect({
-    socket: ws,
-    clientId,
-    permissions: 'readwrite',
-  })
-
-  ws.on('message', (data) => room.handleSocketMessage(sessionId, String(data)))
-  ws.on('close', () => room.handleSocketClose(sessionId))
-  ws.on('error', () => room.handleSocketError(sessionId))
-
-  console.log(`Client ${clientId} connected to room ${roomId} (${room.getSessionCount()} active)`)
+  ws.on('message', (data) => conn.onMessage(String(data)))
+  ws.on('close', conn.onClose)
+  ws.on('error', conn.onError)
 })
 
-server.listen(PORT, () => {
-  console.log(`ECS sync server listening on ws://localhost:${PORT}`)
-  console.log(`Connect: ws://localhost:${PORT}?roomId=myRoom&clientId=myClient`)
-})
+server.listen(8080)
+```
 
-process.on('SIGINT', () => {
-  console.log('\nShutting down...')
-  manager.closeAll()
-  server.close()
-  process.exit(0)
-})
+That's the full setup. No URL parsing, no manual `handleSocketConnect`/`onTokenRefresh` plumbing — `acceptConnection` owns the protocol and re-runs `authorize` whenever the client sends a fresh token. If `authorize` throws on a refresh, the room closes the socket; the client's normal reconnect flow then mints a new token and retries.
 
+### `acceptConnection` is runtime-agnostic
+
+It depends only on a `WebSocketLike` socket (`{ send, close }`) and a URL string. Adapting to Bun, Deno, or uWebSockets is a matter of forwarding events from the runtime's WebSocket events into `conn.onMessage` / `conn.onClose` / `conn.onError`:
+
+```typescript
+// Bun
+Bun.serve({
+  fetch(req, server) {
+    if (server.upgrade(req, { data: { req } })) return
+    return new Response('ok')
+  },
+  websocket: {
+    async open(ws) {
+      ws.data.conn = await acceptConnection({
+        socket: ws,
+        url: ws.data.req.url,
+        request: ws.data.req,
+        manager,
+        authorize: async ({ roomId, token }) => {
+          const claims = await validateToken(token)
+          if (claims.roomId !== roomId) throw new Error('mismatch')
+          return { permissions: claims.canWrite ? 'readwrite' : 'readonly' }
+        },
+      })
+    },
+    message(ws, message) { ws.data.conn?.onMessage(String(message)) },
+    close(ws) { ws.data.conn?.onClose() },
+  },
+})
+```
+
+### Per-session metadata
+
+The optional `metadata` field returned from `authorize` is stored on the session and refreshed automatically when the client swaps tokens. Read it back with `room.getSessionMetadata(sessionId)` — useful for caching the verified token or claims when the server later makes outbound calls on the user's behalf.
+
+```typescript
+const meta = conn.room.getSessionMetadata(conn.sessionId)
+//   ^? unknown — type via the generic on acceptConnection<TRequest, TMeta>
 ```
 
 ## Storage Backends
@@ -104,7 +120,7 @@ class PostgresStorage implements Storage {
 
 ## Permissions
 
-Each session connects with a permission level: `readwrite` or `readonly`.
+Each session has a permission level: `readwrite` or `readonly`. With `acceptConnection`, you return permissions from `authorize`. Without it (low-level path), pass them to `handleSocketConnect`:
 
 ```typescript
 const sessionId = room.handleSocketConnect({
@@ -114,19 +130,13 @@ const sessionId = room.handleSocketConnect({
 });
 ```
 
-- **`readwrite`** - Client can send and receive patches
-- **`readonly`** - Client can only receive patches
+- **`readwrite`** — client can send and receive patches.
+- **`readonly`** — client can only receive patches.
 
 You can change permissions dynamically:
 
 ```typescript
-// Upgrade a viewer to editor
 room.setSessionPermissions(sessionId, 'readwrite');
-
-// Downgrade to read-only
-room.setSessionPermissions(sessionId, 'readonly');
-
-// Check current permissions
 const perms = room.getSessionPermissions(sessionId);
 ```
 
@@ -134,5 +144,46 @@ To list all connected sessions:
 
 ```typescript
 const sessions = room.getSessions();
-// [{ sessionId, clientId, permissions }, ...]
+// [{ sessionId, clientId, permissions, metadata }, ...]
+```
+
+## Low-level API
+
+If `acceptConnection` doesn't fit your setup — custom URL params, non-standard handshake, fully-custom auth flow — drop down to the lower-level building blocks. You're then responsible for parsing the URL, calling your verifier, and wiring `onTokenRefresh`:
+
+```typescript
+import { RoomManager, FileStorage } from '@woven-ecs/canvas-store-server'
+
+wss.on('connection', async (ws, req) => {
+  const url = new URL(req.url!, 'http://_')
+  const roomId = url.searchParams.get('roomId')!
+  const clientId = url.searchParams.get('clientId')!
+  const token = url.searchParams.get('token')!
+
+  // Defined locally so it closes over `roomId` and is reused for refresh.
+  const authorize = async (t: string) => {
+    const claims = await validateToken(t)
+    if (claims.roomId !== roomId) throw new Error('mismatch')
+    return { permissions: claims.canWrite ? 'readwrite' : 'readonly' as const }
+  }
+
+  let auth
+  try { auth = await authorize(token) }
+  catch { ws.close(1008, 'Unauthorized'); return }
+
+  const room = await manager.getOrCreateRoom(roomId, {
+    createStorage: () => new FileStorage({ dir: './data', roomId }),
+    onTokenRefresh: (_, info) => authorize(info.token),
+  })
+
+  const sessionId = room.handleSocketConnect({
+    socket: ws,
+    clientId,
+    permissions: auth.permissions,
+  })
+
+  ws.on('message', (data) => room.handleSocketMessage(sessionId, String(data)))
+  ws.on('close', () => room.handleSocketClose(sessionId))
+  ws.on('error', () => room.handleSocketError(sessionId))
+})
 ```

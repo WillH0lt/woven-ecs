@@ -79,6 +79,7 @@ Pass `true` to enable with defaults, or an object to customize:
 | `onSettled(callback, options)` | `void` | Called after N frames with no mutations |
 | `connect()` | `Promise<void>` | Connect/reconnect WebSocket |
 | `disconnect()` | `void` | Disconnect WebSocket |
+| `setToken(token)` | `void` | Replace the websocket auth token. Sends an `auth-refresh` frame when online; updates the URL token for the next connect when offline |
 | `close()` | `void` | Close all adapters |
 
 ---

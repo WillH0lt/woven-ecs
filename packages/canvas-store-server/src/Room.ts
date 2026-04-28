@@ -2,6 +2,7 @@ import { PROTOCOL_VERSION } from './constants'
 import type { Storage } from './storage/Storage'
 import type {
   AckResponse,
+  AuthRefreshRequest,
   ClientCountBroadcast,
   ComponentData,
   FieldTimestamps,
@@ -21,10 +22,31 @@ export interface RoomOptions {
   createStorage?: () => Storage
   /** Called when a session disconnects. */
   onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
-  /**  Called after document patches have been applied to room state. */
+  /** Called after document patches have been applied to room state. */
   onDocumentPatch?: (room: Room, patches: Patch[]) => void
+  /**
+   * Called when a client sends an `auth-refresh` frame mid-session.
+   * Verify the new token and return the resulting permissions; the room
+   * applies them to the session. Throw to drop the session — the client's
+   * reconnect logic will then mint a fresh token and retry.
+   *
+   * Connect-time auth is the caller's responsibility — verify the token
+   * yourself and pass the resulting `permissions` to `handleSocketConnect`.
+   */
+  onTokenRefresh?: (
+    room: Room,
+    info: { sessionId: string; clientId: string; token: string },
+  ) => TokenRefreshResult | Promise<TokenRefreshResult>
   /** Minimum ms between persistence saves. Defaults to 10000 (10s). */
   saveThrottleMs?: number
+}
+
+/** Return shape of `onTokenRefresh`. `metadata`, when present, replaces
+ * the session's stored metadata; omit it to leave the existing value
+ * untouched. */
+export interface TokenRefreshResult {
+  permissions: SessionPermission
+  metadata?: unknown
 }
 
 interface Session {
@@ -32,6 +54,11 @@ interface Session {
   clientId: string
   socket: WebSocketLike
   permissions: SessionPermission
+  /** Arbitrary per-session value the consumer can attach at connect or
+   * via `onTokenRefresh`. The room never reads it — it just stores and
+   * exposes it. Useful for caching the verified token/claims for later
+   * outbound calls on the user's behalf. */
+  metadata?: unknown
 }
 
 export class Room {
@@ -50,6 +77,10 @@ export class Room {
   private storage?: Storage
   private onSessionRemoved?: (room: Room, info: { sessionId: string; remaining: number }) => void
   private onDocumentPatch?: (room: Room, patches: Patch[]) => void
+  private onTokenRefresh?: (
+    room: Room,
+    info: { sessionId: string; clientId: string; token: string },
+  ) => TokenRefreshResult | Promise<TokenRefreshResult>
 
   // --- throttled save ---
   private saveThrottleMs: number
@@ -60,6 +91,7 @@ export class Room {
     this.storage = options.createStorage?.()
     this.onSessionRemoved = options.onSessionRemoved
     this.onDocumentPatch = options.onDocumentPatch
+    this.onTokenRefresh = options.onTokenRefresh
     this.saveThrottleMs = options.saveThrottleMs ?? 10_000
   }
 
@@ -80,11 +112,17 @@ export class Room {
   // Connection management
   // ---------------------------------------------------------------
 
-  handleSocketConnect(options: { socket: WebSocketLike; clientId: string; permissions: SessionPermission }): string {
-    const { socket, clientId, permissions } = options
+  handleSocketConnect(options: {
+    socket: WebSocketLike
+    clientId: string
+    permissions: SessionPermission
+    /** Optional per-session value the room will hold. See `Session.metadata`. */
+    metadata?: unknown
+  }): string {
+    const { socket, clientId, permissions, metadata } = options
     const sessionId = crypto.randomUUID()
 
-    const session: Session = { sessionId, clientId, socket, permissions }
+    const session: Session = { sessionId, clientId, socket, permissions, metadata }
     this.sessions.set(sessionId, session)
 
     // Send existing ephemeral state from other clients
@@ -154,6 +192,18 @@ export class Room {
     if (session) session.permissions = permissions
   }
 
+  /** Get the current metadata for a session. Returns `undefined` if the
+   * session doesn't exist or no metadata was attached. */
+  getSessionMetadata(sessionId: string): unknown {
+    return this.sessions.get(sessionId)?.metadata
+  }
+
+  /** Replace the metadata for a session. No-op if the session doesn't exist. */
+  setSessionMetadata(sessionId: string, metadata: unknown): void {
+    const session = this.sessions.get(sessionId)
+    if (session) session.metadata = metadata
+  }
+
   getSessions(): SessionInfo[] {
     const result: SessionInfo[] = []
     for (const session of this.sessions.values()) {
@@ -161,6 +211,7 @@ export class Room {
         sessionId: session.sessionId,
         clientId: session.clientId,
         permissions: session.permissions,
+        metadata: session.metadata,
       })
     }
     return result
@@ -203,7 +254,36 @@ export class Room {
       case 'reconnect':
         this.handleReconnect(session, JSON.parse(raw) as ReconnectRequest)
         break
+      case 'auth-refresh':
+        this.handleAuthRefresh(session, JSON.parse(raw) as AuthRefreshRequest)
+        break
     }
+  }
+
+  private handleAuthRefresh(session: Session, req: AuthRefreshRequest): void {
+    if (!this.onTokenRefresh) return
+    const { sessionId, clientId } = session
+    Promise.resolve()
+      .then(() => this.onTokenRefresh!(this, { sessionId, clientId, token: req.token }))
+      .then((result) => {
+        // Session may have disconnected during verification — guard the write.
+        const target = this.sessions.get(sessionId)
+        if (!target) return
+        target.permissions = result.permissions
+        // Only replace metadata when the handler returned a value — `undefined`
+        // means "leave the existing metadata alone."
+        if (result.metadata !== undefined) target.metadata = result.metadata
+      })
+      .catch(() => {
+        const target = this.sessions.get(sessionId)
+        if (!target) return
+        try {
+          target.socket.close()
+        } catch {
+          // ignore
+        }
+        this.removeSession(sessionId)
+      })
   }
 
   private handlePatch(session: Session, req: PatchRequest): void {

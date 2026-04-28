@@ -182,6 +182,21 @@ export class WebsocketAdapter implements Adapter {
     })
   }
 
+  /**
+   * Replace the auth token used for this connection.
+   *
+   * Updates the token used for future reconnect URLs and, if the socket is
+   * currently open, sends an `auth-refresh` frame so the server can swap
+   * credentials without dropping the connection. Pass `undefined` to clear.
+   */
+  setToken(token: string | undefined): void {
+    this.token = token
+    if (token && this.isOnline) {
+      const msg: ClientMessage = { type: 'auth-refresh', token }
+      this.ws!.send(JSON.stringify(msg))
+    }
+  }
+
   push(mutations: Mutation[]): void {
     const docPatches: Patch[] = []
     const ephPatches: Patch[] = []

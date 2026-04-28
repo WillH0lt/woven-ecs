@@ -28,6 +28,8 @@ export interface SessionInfo {
   sessionId: string
   clientId: string
   permissions: SessionPermission
+  /** Per-session value attached at connect or via `onTokenRefresh`. */
+  metadata?: unknown
 }
 
 // --- Client -> Server messages ---
@@ -47,7 +49,17 @@ export interface ReconnectRequest {
   ephemeralPatches?: Patch[]
 }
 
-export type ClientMessage = PatchRequest | ReconnectRequest
+/**
+ * Sent by a client to swap the auth token on a live connection without
+ * dropping the socket. The server should re-verify the token and update
+ * the session's permissions; closing the socket on failure is acceptable.
+ */
+export interface AuthRefreshRequest {
+  type: 'auth-refresh'
+  token: string
+}
+
+export type ClientMessage = PatchRequest | ReconnectRequest | AuthRefreshRequest
 
 // --- Server -> Client messages ---
 

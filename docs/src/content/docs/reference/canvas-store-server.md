@@ -3,6 +3,66 @@ title: canvas-store-server
 description: API reference for @woven-ecs/canvas-store-server
 ---
 
+## acceptConnection
+
+Runtime-agnostic connection helper. Parses the wire-protocol query parameters, runs your `authorize`, registers the session, wires `onTokenRefresh` to the same `authorize`, and returns a handle to forward WS events into.
+
+```typescript
+const conn = await acceptConnection({
+  socket,
+  url: req.url ?? '',
+  request: req,        // optional, passed through to authorize
+  manager,
+  authorize: async ({ roomId, clientId, token, request }) => ({
+    permissions: 'readwrite',
+    metadata: { /* anything */ },
+  }),
+  roomOptions: (roomId) => ({ /* RoomOptions for first connect to this room */ }),
+})
+
+// Forward events from your runtime:
+ws.on('message', (data) => conn.onMessage(String(data)))
+ws.on('close', conn.onClose)
+ws.on('error', conn.onError)
+```
+
+### AcceptConnectionOptions
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `socket` | `WebSocketLike` | The connected socket. |
+| `url` | `string` | Connect URL — full (`wss://host/?…`) or path-and-query (`/?…`). |
+| `request` | `unknown` | Optional runtime request object passed verbatim to `authorize`. |
+| `manager` | `RoomManager` | The room manager. |
+| `authorize` | `function` | `(info) => { permissions, metadata? } \| Promise<...>`. Called on connect AND on every `auth-refresh` frame. Throw to reject. |
+| `roomOptions` | `function` | `(roomId) => Omit<RoomOptions, 'onTokenRefresh'>`. Applied when the room is first created; ignored on subsequent connects to an existing room. |
+
+### AuthorizeInfo
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `roomId` | `string` | Parsed from the URL's `roomId` query parameter. |
+| `clientId` | `string` | Parsed from the URL's `clientId` query parameter. |
+| `token` | `string` | The presented token — from the URL on connect, from the `auth-refresh` frame on refresh. |
+| `request` | `TRequest \| undefined` | The original request object — `undefined` on token refresh. |
+
+### Connection (return value)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sessionId` | `string` | The room session ID assigned after authorization. |
+| `room` | `Room` | The room this session is attached to. |
+| `getMetadata()` | `TMeta \| undefined` | Returns the latest metadata for this session. |
+| `onMessage(data)` | `void` | Forward an incoming WS message string. |
+| `onClose()` | `void` | Call when the WS closes. |
+| `onError()` | `void` | Call when the WS errors. |
+
+### parseConnectUrl
+
+Standalone helper that pulls `{ roomId, clientId, token }` out of a connect URL. Exposed so consumers building custom flows can keep the wire-protocol contract in one place. Throws `ConnectRequestError` with a `code` (`missing-room-id` / `missing-client-id` / `missing-token` / `invalid-url`) on malformed input.
+
+---
+
 ## Room
 
 Manages a single collaborative document session with real-time synchronization.
@@ -30,6 +90,7 @@ const room = new Room({
 | `storage` | `Storage` | - | Pluggable persistence backend |
 | `onDataChange` | `function` | - | Called when document state changes |
 | `onSessionRemoved` | `function` | - | Called when a session disconnects |
+| `onTokenRefresh` | `function` | - | Called when a client sends an `auth-refresh` frame mid-session. Signature: `(room, { sessionId, clientId, token }) => { permissions, metadata? } \| Promise<...>`. Returns the new permissions and optionally replacement metadata; throw to drop the session. Connect-time auth is the caller's responsibility — verify before calling `handleSocketConnect`. Owned by `acceptConnection` when you're using that helper. |
 | `saveThrottleMs` | `number` | 10000 | Minimum ms between persistence saves |
 
 ### Room Methods
@@ -46,6 +107,8 @@ const room = new Room({
 | `getSessions()` | `SessionInfo[]` | Get all session info |
 | `getSessionPermissions(sessionId)` | `SessionPermission` | Get session permissions |
 | `setSessionPermissions(sessionId, permissions)` | `void` | Update session permissions |
+| `getSessionMetadata(sessionId)` | `unknown` | Get the metadata attached to a session via `handleSocketConnect` or `onTokenRefresh`. |
+| `setSessionMetadata(sessionId, metadata)` | `void` | Replace the metadata for a session. |
 | `close()` | `void` | Close room and all connections |
 
 ### handleSocketConnect Options
@@ -54,9 +117,12 @@ const room = new Room({
 room.handleSocketConnect({
   socket: websocket,
   clientId: 'client-uuid',
-  permissions: 'readwrite', // or 'readonly'
+  permissions: 'readwrite',  // or 'readonly'
+  metadata: { /* optional, per-session value the room will hold */ },
 });
 ```
+
+The caller is expected to have authenticated the connection before this point and resolved `permissions` accordingly. Most users should use [`acceptConnection`](#acceptconnection) instead — it handles URL parsing, authorization, and refresh wiring for you.
 
 ---
 
@@ -152,7 +218,7 @@ import { PROTOCOL_VERSION } from '@woven-ecs/canvas-store-server';
 Messages sent from client to server.
 
 ```typescript
-type ClientMessage = PatchRequest | ReconnectRequest;
+type ClientMessage = PatchRequest | ReconnectRequest | AuthRefreshRequest;
 ```
 
 ### PatchRequest
@@ -175,6 +241,17 @@ interface ReconnectRequest {
   protocolVersion: number;
   documentPatches?: Patch[];
   ephemeralPatches?: Patch[];
+}
+```
+
+### AuthRefreshRequest
+
+Sent by a client to swap the auth token on a live connection. Routed to the room's `onAuthRefresh` handler, which is expected to verify the new token and update permissions via `setSessionPermissions`. Throwing closes the session.
+
+```typescript
+interface AuthRefreshRequest {
+  type: 'auth-refresh';
+  token: string;
 }
 ```
 

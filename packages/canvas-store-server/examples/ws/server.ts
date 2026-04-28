@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { FileStorage, RoomManager } from '@woven-ecs/canvas-store-server'
+import { acceptConnection, FileStorage, RoomManager } from '@woven-ecs/canvas-store-server'
 import { WebSocketServer } from 'ws'
 
 const PORT = Number(process.env.PORT) || 8087
@@ -8,6 +8,22 @@ const manager = new RoomManager({
   idleTimeout: 60_000,
 })
 
+/**
+ * Stub: accepts any token and grants `readwrite`. Replace with your own
+ * verification — e.g. `jose.jwtVerify(token, key, ...)` and a check that
+ * the token's claims authorize the requested room.
+ *
+ * Called once on connect, then again every time the client sends an
+ * `auth-refresh` frame. Throw to drop the session.
+ */
+async function authorize({ token, roomId }: { token: string; roomId: string }) {
+  if (!token) throw new Error('Missing token')
+  return {
+    permissions: 'readwrite' as const,
+    metadata: { token, roomId },
+  }
+}
+
 const server = createServer((_req, res) => {
   res.writeHead(200).end('ok')
 })
@@ -15,42 +31,33 @@ const server = createServer((_req, res) => {
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', async (ws, req) => {
-  const url = new URL(req.url!, `http://localhost:${PORT}`)
-  const roomId = url.searchParams.get('roomId') ?? 'default'
-  const clientId = url.searchParams.get('clientId')
-  // const token = url.searchParams.get('token')
-
-  if (!clientId) {
-    ws.close(1008, 'Missing clientId query parameter')
+  let conn: Awaited<ReturnType<typeof acceptConnection>>
+  try {
+    conn = await acceptConnection({
+      socket: ws,
+      url: req.url ?? '',
+      request: req,
+      manager,
+      authorize: ({ token, roomId }) => authorize({ token, roomId }),
+      roomOptions: (roomId) => ({
+        createStorage: () => new FileStorage({ dir: './data', roomId }),
+      }),
+    })
+  } catch (err) {
+    ws.close(1008, (err as Error).message)
     return
   }
 
-  // Example: validate the token and determine permissions.
-  // Replace this with your own authentication logic.
-  // const auth = await validateToken(token);
-  // if (!auth) { ws.close(1008, "Unauthorized"); return; }
-  // const permissions = auth.canWrite ? "readwrite" : "readonly";
+  ws.on('message', (data) => conn.onMessage(String(data)))
+  ws.on('close', conn.onClose)
+  ws.on('error', conn.onError)
 
-  const room = await manager.getOrCreateRoom(roomId, {
-    createStorage: () => new FileStorage({ dir: './data', roomId }),
-  })
-
-  const sessionId = room.handleSocketConnect({
-    socket: ws,
-    clientId,
-    permissions: 'readwrite',
-  })
-
-  ws.on('message', (data) => room.handleSocketMessage(sessionId, String(data)))
-  ws.on('close', () => room.handleSocketClose(sessionId))
-  ws.on('error', () => room.handleSocketError(sessionId))
-
-  console.log(`Client ${clientId} connected to room ${roomId} (${room.getSessionCount()} active)`)
+  console.log(`Client ${conn.sessionId} joined room ${conn.room.getSessionCount()} active session(s) total`)
 })
 
 server.listen(PORT, () => {
   console.log(`ECS sync server listening on ws://localhost:${PORT}`)
-  console.log(`Connect: ws://localhost:${PORT}?roomId=myRoom&clientId=myClient`)
+  console.log(`Connect: ws://localhost:${PORT}?roomId=myRoom&clientId=myClient&token=demo`)
 })
 
 process.on('SIGINT', () => {

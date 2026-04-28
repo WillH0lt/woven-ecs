@@ -483,6 +483,100 @@ describe('WebsocketAdapter', () => {
     })
   })
 
+  describe('setToken', () => {
+    it('sends an auth-refresh frame when online', async () => {
+      const adapter = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: 'test-doc',
+        usePersistence: false,
+        token: 'old-token',
+        components: [],
+        singletons: [],
+      })
+      await adapter.init()
+
+      // Drop the initial reconnect frame so we only see the auth-refresh.
+      mockWs.sentMessages.length = 0
+
+      adapter.setToken('new-token')
+
+      expect(mockWs.sentMessages).toHaveLength(1)
+      expect(JSON.parse(mockWs.sentMessages[0]!)).toEqual({
+        type: 'auth-refresh',
+        token: 'new-token',
+      })
+    })
+
+    it('does not send a frame when offline; defers to next connect', async () => {
+      const adapter = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: 'test-doc',
+        usePersistence: false,
+        startOffline: true,
+        token: 'old-token',
+        components: [],
+        singletons: [],
+      })
+      await adapter.init()
+      expect(adapter.isOnline).toBe(false)
+
+      // Should not throw, should not eagerly create a socket.
+      adapter.setToken('new-token')
+      expect(adapter.isOnline).toBe(false)
+
+      // The deferred token shows up in the URL on the first real connect.
+      await adapter.reconnect()
+      expect(mockWs.url).toContain('token=new-token')
+      expect(mockWs.url).not.toContain('old-token')
+    })
+
+    it('uses the new token on the next reconnect URL', async () => {
+      const adapter = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: 'test-doc',
+        usePersistence: false,
+        token: 'old-token',
+        components: [],
+        singletons: [],
+      })
+      await adapter.init()
+      expect(mockWs.url).toContain('token=old-token')
+
+      adapter.setToken('new-token')
+      adapter.disconnect()
+      await adapter.reconnect()
+
+      expect(mockWs.url).toContain('token=new-token')
+      expect(mockWs.url).not.toContain('old-token')
+    })
+
+    it('clears the URL token when set to undefined', async () => {
+      const adapter = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: 'test-doc',
+        usePersistence: false,
+        token: 'old-token',
+        components: [],
+        singletons: [],
+      })
+      await adapter.init()
+
+      mockWs.sentMessages.length = 0
+      adapter.setToken(undefined)
+      // Clearing while online does not send a frame — the server has nothing
+      // to verify.
+      expect(mockWs.sentMessages).toHaveLength(0)
+
+      adapter.disconnect()
+      await adapter.reconnect()
+      expect(mockWs.url).not.toContain('token=')
+    })
+  })
+
   describe('reconnect', () => {
     it('sends reconnect message on initial connect with lastTimestamp=0', async () => {
       const adapter = createAdapter('client-1')

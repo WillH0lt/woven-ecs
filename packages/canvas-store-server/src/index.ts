@@ -1,5 +1,16 @@
+export type {
+  AcceptConnectionOptions,
+  AuthorizeInfo,
+  AuthorizeResult,
+  Connection,
+} from './connection'
+export {
+  acceptConnection,
+  ConnectRequestError,
+  parseConnectUrl,
+} from './connection'
 export { PROTOCOL_VERSION } from './constants'
-export type { RoomOptions } from './Room'
+export type { RoomOptions, TokenRefreshResult } from './Room'
 export { Room } from './Room'
 export type { RoomManagerOptions } from './RoomManager'
 export { RoomManager } from './RoomManager'
@@ -9,6 +20,7 @@ export { MemoryStorage } from './storage/MemoryStorage'
 export type { Storage } from './storage/Storage'
 export type {
   AckResponse,
+  AuthRefreshRequest,
   ClientCountBroadcast,
   ClientMessage,
   ComponentData,

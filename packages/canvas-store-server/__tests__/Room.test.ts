@@ -829,4 +829,95 @@ describe('Room', () => {
       expect(patches).toHaveLength(0)
     })
   })
+
+  describe('onTokenRefresh', () => {
+    /** Drain the queued microtasks + the macrotask the rejection path
+     * runs on so the .then/.catch chain in handleAuthRefresh fully
+     * settles before we assert. */
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+    it('applies the permissions returned by the handler', async () => {
+      const onTokenRefresh = vi.fn().mockResolvedValue({ permissions: 'readwrite' as const })
+      room = new Room({ onTokenRefresh })
+
+      const { sessionId } = connectClient(room, 'alice', 'readonly')
+      expect(room.getSessionPermissions(sessionId)).toBe('readonly')
+
+      room.handleSocketMessage(sessionId, JSON.stringify({ type: 'auth-refresh', token: 't1' }))
+      await flush()
+
+      expect(onTokenRefresh).toHaveBeenCalledWith(room, {
+        sessionId,
+        clientId: 'alice',
+        token: 't1',
+      })
+      expect(room.getSessionPermissions(sessionId)).toBe('readwrite')
+    })
+
+    it('downgrades permissions on refresh', async () => {
+      const onTokenRefresh = vi.fn().mockResolvedValue({ permissions: 'readonly' as const })
+      room = new Room({ onTokenRefresh })
+
+      const { sessionId } = connectClient(room, 'alice', 'readwrite')
+      room.handleSocketMessage(sessionId, JSON.stringify({ type: 'auth-refresh', token: 't1' }))
+      await flush()
+
+      expect(room.getSessionPermissions(sessionId)).toBe('readonly')
+    })
+
+    it('is a no-op when onTokenRefresh is not configured', () => {
+      const { socket, sessionId } = connectClient(room, 'alice', 'readwrite')
+      clearMessages(socket)
+
+      expect(() => {
+        room.handleSocketMessage(sessionId, JSON.stringify({ type: 'auth-refresh', token: 't1' }))
+      }).not.toThrow()
+
+      expect(socket.close).not.toHaveBeenCalled()
+      expect(room.getSessionCount()).toBe(1)
+      expect(room.getSessionPermissions(sessionId)).toBe('readwrite')
+    })
+
+    it('closes the session when the handler throws', async () => {
+      const onTokenRefresh = vi.fn().mockRejectedValue(new Error('bad token'))
+      room = new Room({ onTokenRefresh })
+
+      const { socket, sessionId } = connectClient(room, 'alice', 'readwrite')
+      expect(room.getSessionCount()).toBe(1)
+
+      room.handleSocketMessage(sessionId, JSON.stringify({ type: 'auth-refresh', token: 'expired' }))
+      await flush()
+
+      expect(socket.close).toHaveBeenCalled()
+      expect(room.getSessionCount()).toBe(0)
+    })
+
+    it('does not crash when the session has already disconnected mid-verification', async () => {
+      let resolveAuth!: (value: { permissions: 'readwrite' }) => void
+      const onTokenRefresh = vi.fn(
+        () =>
+          new Promise<{ permissions: 'readwrite' }>((r) => {
+            resolveAuth = r
+          }),
+      )
+      room = new Room({ onTokenRefresh })
+
+      const { sessionId } = connectClient(room, 'alice', 'readonly')
+      room.handleSocketMessage(sessionId, JSON.stringify({ type: 'auth-refresh', token: 't1' }))
+
+      // Let the chain enter the handler so the inner Promise is constructed
+      // (and `resolveAuth` captured), but stop short of resolving it.
+      await flush()
+
+      // Tab closed mid-flight — session is gone before the handler resolves.
+      room.handleSocketClose(sessionId)
+      expect(room.getSessionCount()).toBe(0)
+
+      resolveAuth({ permissions: 'readwrite' })
+      await flush()
+
+      // No throw, session stays gone.
+      expect(room.getSessionCount()).toBe(0)
+    })
+  })
 })

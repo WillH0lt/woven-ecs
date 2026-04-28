@@ -222,6 +222,17 @@ export class CanvasStore {
   }
 
   /**
+   * Replace the auth token used for the websocket connection. No-op when
+   * websocket sync is not configured. If the socket is currently open, the
+   * new token is sent over the wire so the server can re-authorize the
+   * session without a reconnect; otherwise it's used on the next connect.
+   */
+  setToken(token: string | undefined): void {
+    if (!this.websocketAdapter) return
+    this.websocketAdapter.setToken(token)
+  }
+
+  /**
    * Close all adapters and clean up.
    */
   close(): void {

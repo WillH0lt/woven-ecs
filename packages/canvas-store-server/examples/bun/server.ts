@@ -1,9 +1,15 @@
-import { FileStorage, RoomManager } from '../../src/index'
+import { acceptConnection, type Connection, FileStorage, RoomManager } from '../../src/index'
+
+interface SessionMeta {
+  token: string
+  roomId: string
+}
 
 interface WSData {
-  sessionId: string | null
-  roomId: string
-  clientId: string
+  /** Original request URL — needed because acceptConnection parses query params. */
+  url: string
+  /** Set in `open` once authorization succeeds. */
+  conn: Connection<SessionMeta> | null
 }
 
 const PORT = Number(process.env.PORT) || 8087
@@ -12,71 +18,62 @@ const manager = new RoomManager({
   idleTimeout: 60_000,
 })
 
+/**
+ * Stub: accepts any token and grants `readwrite`. Replace with your own
+ * verification — e.g. `jose.jwtVerify(token, key, ...)` and a check that
+ * the token's claims authorize the requested room.
+ *
+ * Called once on connect, then again every time the client sends an
+ * `auth-refresh` frame. Throw to drop the session.
+ */
+async function authorize({ token, roomId }: { token: string; roomId: string }) {
+  if (!token) throw new Error('Missing token')
+  return {
+    permissions: 'readwrite' as const,
+    metadata: { token, roomId } satisfies SessionMeta,
+  }
+}
+
 const server = Bun.serve<WSData>({
   port: PORT,
 
-  async fetch(req, server) {
-    const url = new URL(req.url)
-    const roomId = url.searchParams.get('roomId') ?? 'default'
-    const clientId = url.searchParams.get('clientId')
-    // const _token = url.searchParams.get('token')
-
-    if (!clientId) {
-      return new Response('Missing clientId query parameter', { status: 400 })
-    }
-
-    // Example: validate the token and determine permissions.
-    // Replace this with your own authentication logic.
-    // const auth = await validateToken(token);
-    // if (!auth) { return new Response("Unauthorized", { status: 401 }); }
-    // const permissions = auth.canWrite ? "readwrite" : "readonly";
-
+  fetch(req, server) {
     const upgraded = server.upgrade(req, {
-      data: {
-        sessionId: null,
-        roomId,
-        clientId,
-        // permissions,
-      },
+      data: { url: req.url, conn: null },
     })
-
-    if (!upgraded) {
-      return new Response('WebSocket upgrade failed', { status: 400 })
-    }
+    if (!upgraded) return new Response('WebSocket upgrade failed', { status: 400 })
   },
 
   websocket: {
     async open(ws) {
-      const { roomId, clientId } = ws.data
-      const room = await manager.getOrCreateRoom(roomId, {
-        createStorage: () => new FileStorage({ dir: './data', roomId }),
-      })
-
-      ws.data.sessionId = room.handleSocketConnect({
-        socket: ws,
-        clientId,
-        permissions: 'readwrite', // ws.data.permissions,
-      })
-
-      console.log(`Client ${clientId} connected to room ${roomId} (${room.getSessionCount()} active)`)
+      try {
+        ws.data.conn = await acceptConnection<unknown, SessionMeta>({
+          socket: ws,
+          url: ws.data.url,
+          manager,
+          authorize: ({ token, roomId }) => authorize({ token, roomId }),
+          roomOptions: (roomId) => ({
+            createStorage: () => new FileStorage({ dir: './data', roomId }),
+          }),
+        })
+        console.log(`Client ${ws.data.conn.sessionId} joined a room`)
+      } catch (err) {
+        ws.close(1008, (err as Error).message)
+      }
     },
 
     message(ws, message) {
-      const { sessionId, roomId } = ws.data
-      const room = manager.getExistingRoom(roomId)
-      if (room && sessionId) room.handleSocketMessage(sessionId, String(message))
+      ws.data.conn?.onMessage(String(message))
     },
 
     close(ws) {
-      const { sessionId, roomId } = ws.data
-      const room = manager.getExistingRoom(roomId)
-      if (room && sessionId) room.handleSocketClose(sessionId)
+      ws.data.conn?.onClose()
     },
   },
 })
 
 console.log(`ECS sync server listening on ws://localhost:${server.port}`)
-console.log(`Connect: ws://localhost:${server.port}?roomId=myRoom&clientId=myClient`)
+console.log(`Connect: ws://localhost:${server.port}?roomId=myRoom&clientId=myClient&token=demo`)
 
 process.on('SIGINT', () => {
   console.log('\nShutting down...')

@@ -94,7 +94,21 @@ export interface ReconnectRequest {
   ephemeralPatches?: Patch[]
 }
 
-export type ClientMessage = PatchRequest | ReconnectRequest
+/**
+ * Sent by a client to replace the auth token on a live connection.
+ *
+ * The connection is established with `?token=…` in the URL, but tokens are
+ * short-lived; sending this lets the client refresh its credential without
+ * dropping the socket. The server is expected to re-verify the token and
+ * update the session's permissions accordingly. No ack is required — if the
+ * new token is invalid the server may close the socket.
+ */
+export interface AuthRefreshRequest {
+  type: 'auth-refresh'
+  token: string
+}
+
+export type ClientMessage = PatchRequest | ReconnectRequest | AuthRefreshRequest
 
 // --- Server responses ---
 
