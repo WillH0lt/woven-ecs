@@ -1,4 +1,5 @@
 import type { Adapter } from '../Adapter'
+import { materializeFields } from '../bufferDelta'
 import type { AnyCanvasComponentDef } from '../CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from '../CanvasSingletonDef'
 import { Origin } from '../constants'
@@ -133,10 +134,10 @@ export class PersistenceAdapter implements Adapter {
           // Full replacement
           this.store.put(key, value)
         } else {
-          // Partial update - merge with existing
+          // Partial update - merge with existing (materializing any buffer deltas)
           const existing = await this.store.get<Record<string, unknown>>(key)
           if (existing) {
-            this.store.put(key, { ...existing, ...value })
+            this.store.put(key, materializeFields(existing, value))
           }
         }
       }

@@ -1,17 +1,26 @@
 import type { EntityId } from '@woven-ecs/core'
+import { encodeBufferDelta } from './bufferDelta'
 import { type ComponentData, componentKey, type Patch } from './types'
 import { isEqual } from './utils'
 
 /**
  * Compare two component snapshots and return the changed fields.
  * Returns null if there are no changes.
+ *
+ * Fields named in `bufferFields` are diffed element-wise and emitted as a sparse
+ * {@link encodeBufferDelta} (or a full array when a delta wouldn't save space)
+ * instead of always re-sending the whole array.
  */
-export function diffFields(prev: ComponentData, next: ComponentData): Record<string, unknown> | null {
+export function diffFields(
+  prev: ComponentData,
+  next: ComponentData,
+  bufferFields?: ReadonlySet<string>,
+): Record<string, unknown> | null {
   if (prev._exists === false && next._exists === false) return null
   if (prev._exists === false) return next
   if (next._exists === false) return null
 
-  const changes: Patch = {}
+  const changes: Record<string, unknown> = {}
   let hasChanges = false
 
   for (const key in next) {
@@ -21,8 +30,20 @@ export function diffFields(prev: ComponentData, next: ComponentData): Record<str
     const prevValue = prev[key]
     const nextValue = next[key]
 
+    if (bufferFields?.has(key) && Array.isArray(nextValue)) {
+      const delta = encodeBufferDelta(
+        Array.isArray(prevValue) ? (prevValue as number[]) : undefined,
+        nextValue as number[],
+      )
+      if (delta !== null) {
+        changes[key] = delta
+        hasChanges = true
+      }
+      continue
+    }
+
     if (!isEqual(prevValue, nextValue)) {
-      changes[key] = nextValue as ComponentData
+      changes[key] = nextValue
       hasChanges = true
     }
   }

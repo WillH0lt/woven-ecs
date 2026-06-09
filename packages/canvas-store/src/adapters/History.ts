@@ -1,4 +1,5 @@
 import type { Adapter } from '../Adapter'
+import { materializeFields } from '../bufferDelta'
 import type { AnyCanvasComponentDef } from '../CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from '../CanvasSingletonDef'
 import { Origin } from '../constants'
@@ -400,8 +401,8 @@ export class HistoryAdapter implements Adapter {
         if (Object.keys(inverseChanges).length > 0) {
           inverse[key] = inverseChanges
         }
-        const base = prev?._exists === false ? {} : prev
-        this.state[key] = { ...base, ...value }
+        const base = prev?._exists === false ? undefined : prev
+        this.state[key] = materializeFields(base, value) as ComponentData
       }
     }
 
@@ -421,8 +422,8 @@ export class HistoryAdapter implements Adapter {
         this.state[key] = data as ComponentData
       } else {
         const existing = this.state[key]
-        const base = existing?._exists === false ? {} : existing
-        this.state[key] = { ...base, ...value }
+        const base = existing?._exists === false ? undefined : existing
+        this.state[key] = materializeFields(base, value) as ComponentData
       }
     }
   }

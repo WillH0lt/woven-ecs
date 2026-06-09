@@ -1,0 +1,23 @@
+{
+  "name": "drawing-sync",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "type-check": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@woven-ecs/canvas-store": "workspace:^",
+    "@woven-ecs/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4",
+    "ws": "^8.18.0"
+  }
+}

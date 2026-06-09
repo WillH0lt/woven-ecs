@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Woven-ECS | drawing sync</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+        background: #fafafa;
+        touch-action: none;
+      }
+      #canvas {
+        display: block;
+        cursor: crosshair;
+      }
+      #hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.85);
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #333;
+        pointer-events: none;
+        line-height: 1.5;
+      }
+      #hud b {
+        color: #000;
+      }
+      #status {
+        font-weight: 600;
+      }
+      #controls {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 8px;
+      }
+      #controls button {
+        padding: 6px 14px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        background: #fff;
+        cursor: pointer;
+      }
+      #controls button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="hud">
+      <div><b>Draw</b> with the mouse/pen. Open a second tab to see strokes sync.</div>
+      <div><b>Undo</b>: Ctrl/⌘+Z &nbsp; <b>Redo</b>: Ctrl/⌘+Shift+Z</div>
+      <div>connection: <span id="status">connecting…</span></div>
+    </div>
+    <div id="controls">
+      <button id="undo" type="button">Undo</button>
+      <button id="redo" type="button">Redo</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

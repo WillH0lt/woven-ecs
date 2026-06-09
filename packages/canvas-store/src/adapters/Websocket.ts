@@ -272,16 +272,27 @@ export class WebsocketAdapter implements Adapter {
 
     if (docPatches.length === 0 && ephPatches.length === 0) return
 
+    // Coalesce everything buffered since the last flush into a single patch
+    // each (composing buffer deltas), so a burst of per-frame edits goes out as
+    // one compact patch instead of N. The receiver merges on pull anyway, and
+    // the server applies a single merged patch identically to the sequence.
+    const mergedDoc = docPatches.length > 0 ? merge(...docPatches) : {}
+    const mergedEph = ephPatches.length > 0 ? merge(...ephPatches) : {}
+    const hasDoc = Object.keys(mergedDoc).length > 0
+    const hasEph = Object.keys(mergedEph).length > 0
+
+    if (!hasDoc && !hasEph) return
+
     const messageId = `${this.clientId}-${++this.messageCounter}`
-    if (docPatches.length > 0) {
-      this.inFlight.set(messageId, merge(...docPatches))
+    if (hasDoc) {
+      this.inFlight.set(messageId, mergedDoc)
     }
 
     const msg: ClientMessage = {
       type: 'patch',
       messageId,
-      ...(docPatches.length > 0 && { documentPatches: docPatches }),
-      ...(ephPatches.length > 0 && { ephemeralPatches: ephPatches }),
+      ...(hasDoc && { documentPatches: [mergedDoc] }),
+      ...(hasEph && { ephemeralPatches: [mergedEph] }),
     }
     this.ws!.send(JSON.stringify(msg))
     this.lastSendTime = performance.now()

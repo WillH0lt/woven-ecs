@@ -4,6 +4,17 @@ export {
   WebsocketAdapter,
   type WebsocketAdapterOptions,
 } from './adapters/Websocket'
+// Buffer-field sparse deltas
+export {
+  applyBufferDelta,
+  type BufferDelta,
+  type BufferRun,
+  composeBufferDeltas,
+  encodeBufferDelta,
+  isBufferDelta,
+  materializeFields,
+  mergeBufferValue,
+} from './bufferDelta'
 // Component definitions
 export {
   type AnyCanvasComponentDef,

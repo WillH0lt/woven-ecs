@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { WebsocketAdapter } from '../src/adapters/Websocket'
-import { Origin } from '../src/constants'
+import { Origin, PROTOCOL_VERSION } from '../src/constants'
 import type { Mutation, ServerMessage } from '../src/types'
 
 // Mock WebSocket
@@ -148,7 +148,7 @@ describe('WebsocketAdapter', () => {
       expect(mockWs.sentMessages).toHaveLength(1) // only the initial reconnect
     })
 
-    it('sends multiple patches in one message', async () => {
+    it('coalesces multiple buffered patches into one merged patch', async () => {
       const adapter = createAdapter()
       await adapter.init()
 
@@ -159,7 +159,8 @@ describe('WebsocketAdapter', () => {
 
       expect(mockWs.sentMessages).toHaveLength(2)
       const sent = JSON.parse(mockWs.sentMessages[1]!)
-      expect(sent.documentPatches).toHaveLength(2)
+      // Buffered patches are merged into a single patch before sending.
+      expect(sent.documentPatches).toEqual([{ 'e1/Pos': { x: 10 }, 'e2/Vel': { vx: 5 } }])
     })
 
     it('increments messageId per send', async () => {
@@ -587,7 +588,7 @@ describe('WebsocketAdapter', () => {
       expect(sent).toEqual({
         type: 'reconnect',
         lastTimestamp: 0,
-        protocolVersion: 1,
+        protocolVersion: PROTOCOL_VERSION,
       })
     })
 
@@ -612,7 +613,7 @@ describe('WebsocketAdapter', () => {
       expect(reconnectMsg).toEqual({
         type: 'reconnect',
         lastTimestamp: 500,
-        protocolVersion: 1,
+        protocolVersion: PROTOCOL_VERSION,
       })
     })
   })

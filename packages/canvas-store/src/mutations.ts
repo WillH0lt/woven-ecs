@@ -1,5 +1,22 @@
+import { isBufferDelta, mergeBufferValue } from './bufferDelta'
 import type { ComponentData, Patch } from './types'
 import { isEqual } from './utils'
+
+/**
+ * Merge `source` component-data fields onto a `target`, composing buffer-delta
+ * fields (append/splice) instead of blindly overwriting them. `target` is
+ * mutated in place. Used wherever patches are coalesced before being applied.
+ */
+function mergeComponentFields(target: ComponentData, source: ComponentData): void {
+  for (const field in source) {
+    const sv = source[field]
+    if (isBufferDelta(sv)) {
+      target[field] = mergeBufferValue(target[field], sv) as unknown as ComponentData[string]
+    } else {
+      target[field] = sv
+    }
+  }
+}
 
 /**
  * Merge multiple mutations into a single mutation.
@@ -56,8 +73,10 @@ export function merge(...mutations: Patch[]): Patch {
         }
         result[key] = { ...value }
       } else {
-        // Merge component data fields
-        result[key] = { ...existing, ...value }
+        // Merge component data fields (buffer deltas compose; others overwrite)
+        const merged: ComponentData = { ...existing }
+        mergeComponentFields(merged, value)
+        result[key] = merged
       }
     }
   }

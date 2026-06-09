@@ -1,3 +1,4 @@
+import { materializeFields } from './bufferDelta'
 import { PROTOCOL_VERSION } from './constants'
 import type { Storage } from './storage/Storage'
 import type {
@@ -566,15 +567,16 @@ function applyPatch(state: Record<string, ComponentData>, patch: Patch): Record<
 
     const existing = state[key]
     if (!existing || existing._exists === false) {
-      state[key] = { ...value }
+      // New component. Materialize any buffer deltas against an empty base so
+      // stored state always holds full arrays.
+      state[key] = materializeFields(undefined, value) as ComponentData
       modified[key] = value
       continue
     }
 
-    // Merge new fields into existing
-    for (const [k, v] of Object.entries(value)) {
-      existing[k] = v
-    }
+    // Merge new fields into existing; buffer deltas materialize onto the
+    // existing full array so room state never holds a delta.
+    state[key] = materializeFields(existing, value) as ComponentData
     modified[key] = value
   }
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROTOCOL_VERSION } from '../src/constants'
 import { Room } from '../src/Room'
 import { MemoryStorage } from '../src/storage/MemoryStorage'
 import type {
@@ -156,7 +157,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           documentPatches: patches,
         }),
       )
@@ -413,7 +414,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 1,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
         }),
       )
 
@@ -434,7 +435,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           documentPatches: [{ 'e1/Pos': { _exists: true, x: 99 } }],
         }),
       )
@@ -463,7 +464,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
         }),
       )
 
@@ -488,7 +489,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           documentPatches: [{ 'e1/Pos': { _exists: true, x: 42 } }],
         }),
       )
@@ -695,7 +696,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           documentPatches: [{ 'e1/Pos': { x: 999 } }],
           ephemeralPatches: [{ 'bob/Cursor': { x: 50 } }],
         }),
@@ -777,7 +778,7 @@ describe('Room', () => {
 
       const mismatches = getMessages<VersionMismatchResponse>(socket, 'version-mismatch')
       expect(mismatches).toHaveLength(1)
-      expect(mismatches[0].serverProtocolVersion).toBe(1)
+      expect(mismatches[0].serverProtocolVersion).toBe(PROTOCOL_VERSION)
     })
 
     it('does not send version-mismatch when protocolVersion matches', () => {
@@ -789,7 +790,7 @@ describe('Room', () => {
         JSON.stringify({
           type: 'reconnect',
           lastTimestamp: 0,
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
         }),
       )
 
