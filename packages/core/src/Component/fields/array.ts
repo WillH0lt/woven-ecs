@@ -16,6 +16,9 @@ const DEFAULT_BINARY_BYTES = 256
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+// Mutating array methods that need special handling
+const mutatingMethods = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'reverse', 'sort', 'fill', 'copyWithin'])
+
 /**
  * Calculate bytes per element based on element definition
  * Ensures proper alignment for typed array access
@@ -481,19 +484,6 @@ export class ArrayField extends Field<ArrayFieldDef> {
       get: () => {
         const arrayView = (buffer as any)[fieldName] as ArrayBufferView
         const entityId = getEntityId()
-
-        // Mutating array methods that need special handling
-        const mutatingMethods = new Set([
-          'push',
-          'pop',
-          'shift',
-          'unshift',
-          'splice',
-          'reverse',
-          'sort',
-          'fill',
-          'copyWithin',
-        ])
 
         // Return a proxy that intercepts index reads/writes
         return new Proxy([] as any[], {

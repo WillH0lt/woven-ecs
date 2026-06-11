@@ -16,6 +16,12 @@ const DEFAULT_BINARY_BYTES = 256
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+// Tuples are fixed-length: these methods would change the length
+const lengthChangingMethods = new Set(['push', 'pop', 'shift', 'unshift', 'splice'])
+
+// Length-preserving mutating methods that operate on a copy and persist
+const mutatingMethods = new Set(['reverse', 'sort', 'fill', 'copyWithin'])
+
 /**
  * Calculate bytes per element based on element definition
  * Ensures proper alignment for typed array access
@@ -461,13 +467,6 @@ export class TupleField extends Field<TupleFieldDef> {
 
         // Other element types decode into a detached copy, so element writes
         // must be intercepted and routed back to the buffer
-
-        // Tuples are fixed-length: these methods would change the length
-        const lengthChangingMethods = new Set(['push', 'pop', 'shift', 'unshift', 'splice'])
-
-        // Length-preserving mutating methods that operate on a copy and persist
-        const mutatingMethods = new Set(['reverse', 'sort', 'fill', 'copyWithin'])
-
         return new Proxy([] as any[], {
           get(_target, prop) {
             // Handle numeric indices
