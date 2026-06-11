@@ -287,6 +287,121 @@ export class TupleBufferView {
     }
   }
 
+  /**
+   * Get a single element from the tuple
+   * @param index - The entity index
+   * @param elementIndex - The index of the element within the tuple
+   * @returns The element value, or undefined if out of bounds
+   */
+  getElement(index: number, elementIndex: number): any {
+    if (elementIndex < 0 || elementIndex >= this.tupleLength) {
+      return undefined
+    }
+
+    if (this.numberTypedArray !== null) {
+      return this.numberTypedArray[index * this.elementsPerEntry + elementIndex]
+    }
+
+    const offset = index * this.bytesPerEntry
+
+    switch (this.elementDef.type) {
+      case 'boolean': {
+        return Atomics.load(this.uint8View, offset + elementIndex) !== 0
+      }
+      case 'string': {
+        const strOffset = offset + elementIndex * this.bytesPerElement
+        const strLen = this.readUint32(strOffset)
+        if (strLen === 0) {
+          return ''
+        }
+        const stringBytes = new Uint8Array(strLen)
+        for (let j = 0; j < strLen; j++) {
+          stringBytes[j] = Atomics.load(this.uint8View, strOffset + 4 + j)
+        }
+        return textDecoder.decode(stringBytes)
+      }
+      case 'binary': {
+        const binOffset = offset + elementIndex * this.bytesPerElement
+        const binLen = this.readUint32(binOffset)
+        if (binLen === 0) {
+          return new Uint8Array(0)
+        }
+        const binData = new Uint8Array(binLen)
+        for (let j = 0; j < binLen; j++) {
+          binData[j] = Atomics.load(this.uint8View, binOffset + 4 + j)
+        }
+        return binData
+      }
+    }
+  }
+
+  /**
+   * Set a single element in the tuple
+   * @param index - The entity index
+   * @param elementIndex - The index of the element within the tuple
+   * @param value - The value to set
+   */
+  setElement(index: number, elementIndex: number, value: any): void {
+    if (elementIndex < 0 || elementIndex >= this.tupleLength) {
+      return
+    }
+
+    if (this.numberTypedArray !== null) {
+      this.numberTypedArray[index * this.elementsPerEntry + elementIndex] = value
+      return
+    }
+
+    const offset = index * this.bytesPerEntry
+
+    switch (this.elementDef.type) {
+      case 'boolean': {
+        Atomics.store(this.uint8View, offset + elementIndex, value ? 1 : 0)
+        break
+      }
+      case 'string': {
+        const strOffset = offset + elementIndex * this.bytesPerElement
+        const str = value as string
+        const encoded = textEncoder.encode(str)
+        const maxDataBytes = this.bytesPerElement - 4
+        const bytesToCopy = Math.min(encoded.length, maxDataBytes)
+
+        // Clear existing string data
+        for (let j = 0; j < maxDataBytes; j++) {
+          Atomics.store(this.uint8View, strOffset + 4 + j, 0)
+        }
+
+        // Write string length
+        this.writeUint32(strOffset, bytesToCopy)
+
+        // Write string data
+        for (let j = 0; j < bytesToCopy; j++) {
+          Atomics.store(this.uint8View, strOffset + 4 + j, encoded[j])
+        }
+        break
+      }
+      case 'binary': {
+        const binOffset = offset + elementIndex * this.bytesPerElement
+        const bin = value as Uint8Array
+        const maxDataBytes = this.bytesPerElement - 4
+        const bytesToCopy = Math.min(bin.length, maxDataBytes)
+
+        // Clear existing binary data
+        for (let j = 0; j < maxDataBytes; j++) {
+          Atomics.store(this.uint8View, binOffset + 4 + j, 0)
+        }
+
+        // Write binary length
+        this.writeUint32(binOffset, bytesToCopy)
+
+        // Write binary data
+        for (let j = 0; j < bytesToCopy; j++) {
+          Atomics.store(this.uint8View, binOffset + 4 + j, bin[j])
+        }
+        break
+      }
+    }
+  }
+
   getBuffer(): ArrayBufferLike {
     return this.buffer
   }
@@ -328,12 +443,111 @@ export class TupleField extends Field<TupleFieldDef> {
   }
 
   defineWritable(master: any, fieldName: string, buffer: ComponentBuffer<any>, getEntityId: () => EntityId) {
+    const isNumberTuple = this.fieldDef.elementDef.type === 'number'
+    const tupleLength = this.fieldDef.length
+
     Object.defineProperty(master, fieldName, {
       enumerable: true,
       configurable: false,
       get: () => {
-        const tuple = (buffer as any)[fieldName]
-        return tuple.get(getEntityId())
+        const tupleView = (buffer as any)[fieldName] as TupleBufferView
+        const entityId = getEntityId()
+
+        // Fast path: number tuples return a typed array subarray that writes
+        // through to the buffer directly (no allocation, no proxy)
+        if (isNumberTuple) {
+          return tupleView.get(entityId)
+        }
+
+        // Other element types decode into a detached copy, so element writes
+        // must be intercepted and routed back to the buffer
+
+        // Tuples are fixed-length: these methods would change the length
+        const lengthChangingMethods = new Set(['push', 'pop', 'shift', 'unshift', 'splice'])
+
+        // Length-preserving mutating methods that operate on a copy and persist
+        const mutatingMethods = new Set(['reverse', 'sort', 'fill', 'copyWithin'])
+
+        return new Proxy([] as any[], {
+          get(_target, prop) {
+            // Handle numeric indices
+            if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+              const index = parseInt(prop, 10)
+              return tupleView.getElement(entityId, index)
+            }
+            // Handle 'length' property
+            if (prop === 'length') {
+              return tupleLength
+            }
+            if (typeof prop === 'string' && lengthChangingMethods.has(prop)) {
+              return () => {
+                throw new TypeError(`Cannot call ${prop}() on a fixed-length tuple field`)
+              }
+            }
+            // Handle mutating tuple methods by operating on copy and persisting
+            if (typeof prop === 'string' && mutatingMethods.has(prop)) {
+              return (...args: any[]) => {
+                const tuple = tupleView.get(entityId)
+                const result = (tuple as any)[prop](...args)
+                tupleView.set(entityId, tuple)
+                return result
+              }
+            }
+            // Handle non-mutating methods by getting the full tuple first
+            const fullTuple = tupleView.get(entityId)
+            const value = (fullTuple as any)[prop]
+            if (typeof value === 'function') {
+              return value.bind(fullTuple)
+            }
+            return value
+          },
+          set(_target, prop, value) {
+            // Handle numeric indices
+            if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+              const index = parseInt(prop, 10)
+              tupleView.setElement(entityId, index, value)
+              return true
+            }
+            return false
+          },
+          has(_target, prop) {
+            if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+              const index = parseInt(prop, 10)
+              return index >= 0 && index < tupleLength
+            }
+            return prop in []
+          },
+          ownKeys() {
+            const keys: string[] = []
+            for (let i = 0; i < tupleLength; i++) {
+              keys.push(String(i))
+            }
+            keys.push('length')
+            return keys
+          },
+          getOwnPropertyDescriptor(_target, prop) {
+            if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+              const index = parseInt(prop, 10)
+              if (index >= 0 && index < tupleLength) {
+                return {
+                  value: tupleView.getElement(entityId, index),
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                }
+              }
+            }
+            if (prop === 'length') {
+              return {
+                value: tupleLength,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+              }
+            }
+            return undefined
+          },
+        })
       },
       set: (value: any) => {
         const tuple = (buffer as any)[fieldName]

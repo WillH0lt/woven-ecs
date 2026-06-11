@@ -1774,6 +1774,129 @@ describe('Component', () => {
       expect([...result.coords]).toEqual([10.0, 20.0])
     })
 
+    it('should allow direct mutation of boolean tuple elements', () => {
+      const Flags = defineComponent({
+        bits: field.tuple(field.boolean(), 4),
+      })
+      const world = new World([Flags])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, Flags, { bits: [true, false, true, false] })
+
+      const flags = Flags.write(ctx, entityId)
+      flags.bits[0] = false
+      flags.bits[1] = true
+
+      const result = Flags.read(ctx, entityId)
+      expect(result.bits).toEqual([false, true, true, false])
+    })
+
+    it('should allow direct mutation of string tuple elements', () => {
+      const NamePair = defineComponent({
+        names: field.tuple(field.string().max(50), 2),
+      })
+      const world = new World([NamePair])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, NamePair, { names: ['first', 'last'] })
+
+      const namePair = NamePair.write(ctx, entityId)
+      namePair.names[0] = 'updated'
+
+      const result = NamePair.read(ctx, entityId)
+      expect(result.names).toEqual(['updated', 'last'])
+    })
+
+    it('should allow direct mutation of binary tuple elements', () => {
+      const DataPair = defineComponent({
+        chunks: field.tuple(field.binary().max(32), 2),
+      })
+      const world = new World([DataPair])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, DataPair, {
+        chunks: [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])],
+      })
+
+      const dataPair = DataPair.write(ctx, entityId)
+      dataPair.chunks[0] = new Uint8Array([9, 9])
+
+      const result = DataPair.read(ctx, entityId)
+      expect(Array.from(result.chunks[0])).toEqual([9, 9])
+      expect(Array.from(result.chunks[1])).toEqual([4, 5, 6])
+    })
+
+    it('should support reads and iteration on writable non-number tuples', () => {
+      const Flags = defineComponent({
+        bits: field.tuple(field.boolean(), 3),
+      })
+      const world = new World([Flags])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, Flags, { bits: [true, false, true] })
+
+      const flags = Flags.write(ctx, entityId)
+      expect(flags.bits[0]).toBe(true)
+      expect(flags.bits[1]).toBe(false)
+      expect(flags.bits.length).toBe(3)
+      expect([...flags.bits]).toEqual([true, false, true])
+      expect(flags.bits.indexOf(false)).toBe(1)
+    })
+
+    it('should ignore out-of-bounds tuple element writes', () => {
+      const Flags = defineComponent({
+        bits: field.tuple(field.boolean(), 2),
+      })
+      const world = new World([Flags])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, Flags, { bits: [true, false] })
+
+      const flags = Flags.write(ctx, entityId)
+      ;(flags.bits as any)[5] = true // Beyond tuple length, should be ignored
+
+      const result = Flags.read(ctx, entityId)
+      expect(result.bits).toEqual([true, false])
+      expect(result.bits.length).toBe(2)
+    })
+
+    it('should throw when calling length-changing methods on writable non-number tuples', () => {
+      const Flags = defineComponent({
+        bits: field.tuple(field.boolean(), 2),
+      })
+      const world = new World([Flags])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, Flags, { bits: [true, false] })
+
+      const flags = Flags.write(ctx, entityId)
+      expect(() => (flags.bits as any).push(true)).toThrow(/fixed-length tuple/)
+      expect(() => (flags.bits as any).splice(0, 1)).toThrow(/fixed-length tuple/)
+    })
+
+    it('should persist length-preserving mutating methods on writable non-number tuples', () => {
+      const NamePair = defineComponent({
+        names: field.tuple(field.string().max(50), 2),
+      })
+      const world = new World([NamePair])
+      const ctx = world._getContext()
+
+      const entityId = createEntity(ctx)
+      addComponent(ctx, entityId, NamePair, { names: ['first', 'last'] })
+
+      const namePair = NamePair.write(ctx, entityId)
+      ;(namePair.names as any).reverse()
+
+      const result = NamePair.read(ctx, entityId)
+      expect(result.names).toEqual(['last', 'first'])
+    })
+
     it('should store and retrieve string tuples', () => {
       const NamePair = defineComponent({
         names: field.tuple(field.string().max(50), 2),
