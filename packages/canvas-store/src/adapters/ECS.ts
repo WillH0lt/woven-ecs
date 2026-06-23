@@ -119,6 +119,31 @@ export class EcsAdapter implements Adapter {
       return docPatch
     }
 
+    // Pass 1 — register a stable id for every entity touched this batch BEFORE
+    // building any patches. A ref field can be serialized before its target's own
+    // COMPONENT_ADDED is processed (e.g. a duplicated block created in the same tick
+    // as the layer it points at), so resolving refs against a fully-built map keeps
+    // pass 2's ref translation a pure lookup — no ECS reads on the per-event path —
+    // and avoids serializing such a forward ref as `null` (a later partial diff would
+    // then strand the component, so it never persists). Reads each entity's Synced at
+    // most once; pre-existing entities are already cached from earlier pulls.
+    for (const event of events) {
+      if (event.eventType === EventType.REMOVED) continue
+      // Only consider tracked, non-singleton component events. Skipping unknown defs
+      // is also what keeps us off the singleton sentinel entity (its id is out of the
+      // entity-buffer range, so hasComponent on it throws) — a `sync:'none'` singleton
+      // has no componentMap entry. Any synced ref target always carries at least one
+      // tracked component, so this still registers every entity a ref can point at.
+      const def = this.componentMap.get(event.componentId)
+      if (!def || def.isSingleton) continue
+      const { entityId } = event
+      if (this.entityToStableId.has(entityId)) continue
+      if (!hasComponent(ctx, entityId, Synced, false)) continue
+      const stableId = Synced.read(ctx, entityId).id
+      this.entityToStableId.set(entityId, stableId)
+      this.stableIdToEntity.set(stableId, entityId)
+    }
+
     for (const event of events) {
       const { entityId, eventType, componentId } = event
 
@@ -148,20 +173,12 @@ export class EcsAdapter implements Adapter {
 
       if (!componentDef) continue
 
-      // exclude unsynced entities
-      if (!componentDef.isSingleton && !hasComponent(ctx, entityId, Synced, false)) continue
+      // Exclude unsynced entities. Pass 1 registered every synced entity touched
+      // this batch, so a map miss here means "not synced" — no per-event ECS read.
+      if (!componentDef.isSingleton && !this.entityToStableId.has(entityId)) continue
 
-      const synced = Synced.read(ctx, entityId)
-
-      // Resolve stable ID
-      let stableId: string
-      if (componentDef.isSingleton) {
-        stableId = SINGLETON_STABLE_ID
-      } else {
-        stableId = synced.id
-        this.stableIdToEntity.set(stableId, entityId)
-        this.entityToStableId.set(entityId, stableId)
-      }
+      // Resolve stable ID (registered in pass 1 for non-singletons).
+      const stableId = componentDef.isSingleton ? SINGLETON_STABLE_ID : this.entityToStableId.get(entityId)!
 
       const key = `${stableId}/${componentDef.name}`
       const patch = getPatchTarget(componentDef.sync)
@@ -363,6 +380,9 @@ export class EcsAdapter implements Adapter {
     for (const fieldName in schema) {
       if (schema[fieldName].def.type === 'ref' && result[fieldName] != null) {
         const entityId = result[fieldName] as EntityId
+        // Pure lookup — pull()'s pass 1 has already registered every synced entity
+        // touched this batch (incl. same-tick forward-ref targets), so no ECS read
+        // is needed here. A miss means the target isn't synced → null.
         result[fieldName] = this.entityToStableId.get(entityId) ?? null
       }
     }

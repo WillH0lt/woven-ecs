@@ -717,6 +717,63 @@ describe('EcsAdapter', () => {
       // The ref points to an entity with no stableId mapping → null
       expect(mutations[0].patch['uuid-1/Linked']!.target).toBeNull()
     })
+
+    it('resolves an outbound ref to a target whose own events come later in the same pull (forward ref)', () => {
+      const { ctx, adapter } = setup()
+      adapter.pull() // init
+
+      // The ref is added BEFORE the target's own component events, all in one batch
+      // (the target's events come later in event order). The ref must still resolve to
+      // the target's stable id rather than serialize as null — otherwise a follow-up
+      // partial diff for the ref overwrites the full create-patch and the component is
+      // stranded (never persists/syncs). pull()'s pass 1 registers the target up front.
+      const source = createSyncedEntity(ctx, 'source-uuid')
+      const target = createSyncedEntity(ctx, 'target-uuid')
+      addComponent(ctx, source, Linked, { target }) // ref → target...
+      addComponent(ctx, target, Position, { x: 0, y: 0 }) // ...target's tracked comp added AFTER
+
+      const mutations = adapter.pull()
+      expect(mutations.length).toBeGreaterThan(0)
+      expect(mutations[0].patch['source-uuid/Linked']).toEqual({
+        _exists: true,
+        _version: null,
+        target: 'target-uuid',
+      })
+    })
+
+    it('keeps a complete create-patch when a ref is remapped to a target created later in the same batch', () => {
+      const { ctx, adapter } = setup()
+      adapter.pull() // init
+
+      // A pre-existing, already-mapped target (like a source page's layer).
+      const targetA = createSyncedEntity(ctx, 'targetA-uuid')
+      addComponent(ctx, targetA, Position, { x: 0, y: 0 })
+      adapter.pull() // register targetA's mapping
+      adapter.push([]) // advance eventIndex
+
+      // In ONE batch (one tick → one pull), mirroring page duplication: create a
+      // block referencing the existing target, then create a NEW target after it,
+      // then remap the block's ref onto the new target. Pre-fix, the block's add
+      // serialized the ref as null (new target unmapped at add-time) and the remap
+      // CHANGED diff (null → stable) overwrote the full add with a partial { ref }
+      // patch — which strands the component on persist (the symptom: a duplicated
+      // PDF background block vanished on reload).
+      const block = createSyncedEntity(ctx, 'block-uuid')
+      addComponent(ctx, block, Linked, { target: targetA })
+      const targetB = createSyncedEntity(ctx, 'targetB-uuid') // created AFTER the block...
+      addComponent(ctx, targetB, Position, { x: 1, y: 1 }) // ...with its own tracked component
+      Linked.write(ctx, block).target = targetB // remap onto the later-created target
+
+      const mutations = adapter.pull()
+      expect(mutations.length).toBeGreaterThan(0)
+      // Must be a COMPLETE create with the remapped ref resolved — not a partial
+      // { target } diff that would be dropped when applied to a fresh document.
+      expect(mutations[0].patch['block-uuid/Linked']).toEqual({
+        _exists: true,
+        _version: null,
+        target: 'targetB-uuid',
+      })
+    })
   })
 
   describe('round-trip: pull then push', () => {
