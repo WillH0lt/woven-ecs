@@ -29,6 +29,19 @@ export class PersistenceAdapter implements Adapter {
   private componentsByName: Map<string, AnyCanvasComponentDef | AnyCanvasSingletonDef>
   private initialState: Record<string, ComponentData> | undefined
 
+  /**
+   * Serializes {@link persistMutations} so its async read-modify-write can't
+   * interleave. `push` is fire-and-forget and runs many times per second while
+   * drawing; each `persistMutations` does `get(key)` → materialize buffer deltas
+   * → `put(key)`. Two overlapping runs both read the same `existing` base and the
+   * second `put` clobbers the first, dropping a buffer delta. Because deltas are
+   * encoded against the ECS adapter's advancing `prevState`, the dropped one
+   * leaves the stored base behind, and the next `applyBufferDelta` zero-fills the
+   * indices the lost delta had grown into — persisting (0,0) points that only
+   * surface on reload. Chaining every persist guarantees in-order, atomic RMW.
+   */
+  private writeChain: Promise<void> = Promise.resolve()
+
   constructor(options: PersistenceAdapterOptions) {
     this.documentId = options.documentId
     this.initialState = options.initialState
@@ -116,10 +129,13 @@ export class PersistenceAdapter implements Adapter {
     const filtered = mutations.filter((m) => m.origin !== Origin.Persistence && m.syncBehavior !== 'ephemeral')
     if (filtered.length === 0) return
 
-    // Fire and forget - don't await
-    this.persistMutations(filtered).catch((err) => {
-      console.error('Error persisting mutations:', err)
-    })
+    // Fire and forget, but serialized: each persist waits for the previous so
+    // the get→materialize→put read-modify-write stays atomic. See writeChain.
+    this.writeChain = this.writeChain
+      .then(() => this.persistMutations(filtered))
+      .catch((err) => {
+        console.error('Error persisting mutations:', err)
+      })
   }
 
   private async persistMutations(mutations: Mutation[]): Promise<void> {
