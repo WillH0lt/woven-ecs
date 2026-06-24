@@ -318,6 +318,50 @@ describe('PersistenceAdapter', () => {
     })
   })
 
+  describe('concurrent writes (buffer-delta race)', () => {
+    // Regression: push() is fire-and-forget and persistMutations does an async
+    // read-modify-write per key (get -> materialize buffer deltas -> put). Two
+    // overlapping pushes both read the same base before either writes back, so
+    // the second put clobbers the first and drops a buffer delta. Because the
+    // dropped delta grew the buffer, the next applyBufferDelta zero-fills the
+    // indices it had added — persisting (0,0)-style stray values that only
+    // surface on reload. push() now serializes persists to keep the RMW atomic.
+    it('does not drop a buffer delta when two pushes race on the same key', async () => {
+      const docId = 'buffer-delta-race'
+      adapter = createAdapter(docId)
+      await adapter.init()
+
+      // Establish a full base array [1,2,3,4] (two xy points).
+      adapter.push([makeMutation({ 'e1/Stroke': { _exists: true, points: [1, 2, 3, 4] } })])
+      await new Promise((r) => setTimeout(r, 50))
+
+      // Two updates fired back-to-back with NO await between them, so their
+      // async read-modify-writes interleave. Both are encoded against the
+      // *post-A* baseline the ECS adapter would hold:
+      //   A grows the buffer, adding indices 4 and 5 ([..,5,6]).
+      //   B changes only index 0 and carries the new length, but no values for
+      //     indices 4/5 (it assumes A already wrote them).
+      // If B's RMW runs against the pre-A base, applyBufferDelta zero-fills 4/5.
+      adapter.push([makeMutation({ 'e1/Stroke': { points: { __buf: 1, len: 6, runs: [[4, [5, 6]]] } } })])
+      adapter.push([makeMutation({ 'e1/Stroke': { points: { __buf: 1, len: 6, runs: [[0, [9]]] } } })])
+
+      await new Promise((r) => setTimeout(r, 50))
+      adapter.close()
+
+      // Reload and assert no index was lost to a zero-fill.
+      adapter = createAdapter(docId)
+      await adapter.init()
+
+      const mutations = adapter.pull()
+      expect(mutations.length).toBeGreaterThan(0)
+      // B's index-0 edit applied on top of A's growth — nothing zeroed.
+      expect(mutations[0].patch['e1/Stroke']).toEqual({
+        _exists: true,
+        points: [9, 2, 3, 4, 5, 6],
+      })
+    })
+  })
+
   describe('multiple entities', () => {
     it('persists and loads multiple entities', async () => {
       const docId = 'multi-entity-test'
