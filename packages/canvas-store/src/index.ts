@@ -44,6 +44,8 @@ export {
   migrateComponentData,
   validateMigrations,
 } from './migrations'
+// One-shot room seeding (adopt a local/offline document into a server room)
+export { readPersistedDocument, type SeedRoomOptions, seedRoom } from './seed'
 export type {
   ComponentData,
   InferCanvasComponentType,
