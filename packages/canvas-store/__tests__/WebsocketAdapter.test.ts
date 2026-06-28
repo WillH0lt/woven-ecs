@@ -1217,6 +1217,165 @@ describe('WebsocketAdapter', () => {
     })
   })
 
+  describe('rollback recovery (resync)', () => {
+    /** Find the patch message the adapter sent in response to a resync. */
+    function resyncPatch() {
+      const sent = mockWs.sentMessages.map((s) => JSON.parse(s))
+      return sent.find((m) => m.type === 'patch' && typeof m.messageId === 'string' && m.messageId.includes('resync'))
+    }
+
+    /**
+     * Simulate a remote document patch arriving and the CanvasStore router feeding
+     * the pulled mutation back to every adapter — which is how the WS adapter's own
+     * state mirror gets remote values in production.
+     */
+    function receiveRemote(adapter: WebsocketAdapter, patch: Record<string, any>, timestamp: number) {
+      mockWs.receiveMessage({ type: 'patch', documentPatches: [patch], clientId: 'client-2', timestamp })
+      adapter.push(adapter.pull())
+    }
+
+    it('records its own acked writes and sends them when after `since`', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      // A single local write, acked at ts 5 (one send → no throttle to fight).
+      adapter.push([{ patch: { 'e1/Pos': { x: 10 } }, origin: Origin.ECS, syncBehavior: 'document' }])
+      mockWs.receiveMessage({ type: 'ack', messageId: 'client-1-1', timestamp: 5 })
+
+      mockWs.receiveMessage({ type: 'resync', since: 3 })
+
+      expect(resyncPatch().documentPatches).toEqual([{ 'e1/Pos': { x: 10 } }])
+    })
+
+    it('sends only fields confirmed after `since`, with current values', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      receiveRemote(adapter, { 'e1/Pos': { x: 10 } }, 5)
+      receiveRemote(adapter, { 'e2/Vel': { vx: 1 } }, 8)
+
+      // Server rolled back to ts 6: only e2/Vel (ts 8) is in the lost window.
+      mockWs.receiveMessage({ type: 'resync', since: 6 })
+
+      expect(resyncPatch().documentPatches).toEqual([{ 'e2/Vel': { vx: 1 } }])
+    })
+
+    it('re-asserts deletions made in the lost window', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      receiveRemote(adapter, { 'e1/Pos': { _exists: true, x: 1 } }, 2)
+      receiveRemote(adapter, { 'e1/Pos': { _exists: false } }, 4)
+
+      mockWs.receiveMessage({ type: 'resync', since: 3 })
+
+      expect(resyncPatch().documentPatches).toEqual([{ 'e1/Pos': { _exists: false } }])
+    })
+
+    it('folds in unconfirmed offline edits', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      // Establish a timestamp, then go offline and edit.
+      receiveRemote(adapter, { 'e0/X': { a: 1 } }, 10)
+      adapter.disconnect()
+      adapter.push([{ patch: { 'e3/Pos': { x: 7 } }, origin: Origin.ECS, syncBehavior: 'document' }])
+
+      await adapter.reconnect()
+      // Server came back rolled all the way back; offline edit must still heal it.
+      mockWs.receiveMessage({ type: 'resync', since: 0 })
+
+      expect(resyncPatch().documentPatches[0]['e3/Pos']).toEqual({ x: 7 })
+    })
+
+    it('sends nothing when there is nothing after `since`', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      receiveRemote(adapter, { 'e1/Pos': { x: 10 } }, 5)
+
+      mockWs.receiveMessage({ type: 'resync', since: 5 })
+
+      expect(resyncPatch()).toBeUndefined()
+    })
+
+    it('persists the timestamp map and heals across a reload', async () => {
+      const docId = 'resync-ts-persist'
+
+      // Session 1: a confirmed write at ts 7 builds the timestamp map, which is
+      // persisted to the -ws meta store.
+      const a1 = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: docId,
+        usePersistence: true,
+        components: [],
+        singletons: [],
+      })
+      await a1.init()
+      receiveRemote(a1, { 'e1/Pos': { x: 10 } }, 7)
+      await new Promise((r) => setTimeout(r, 50))
+      a1.close()
+
+      // Session 2: reload. The timestamp map comes back from persistence; the
+      // document mirror is reseeded the way the persistence adapter would via the
+      // router. Session 2 never saw an ack/patch for e1, so a heal is only
+      // possible if the timestamps survived.
+      const a2 = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: docId,
+        usePersistence: true,
+        components: [],
+        singletons: [],
+      })
+      await a2.init()
+      a2.push([{ patch: { 'e1/Pos': { x: 10 } }, origin: Origin.Persistence, syncBehavior: 'document' }])
+
+      mockWs.receiveMessage({ type: 'resync', since: 3 })
+
+      expect(resyncPatch().documentPatches).toEqual([{ 'e1/Pos': { x: 10 } }])
+      a2.close()
+    })
+
+    it('heals a windowed deletion across a reload (persisted tombstone)', async () => {
+      const docId = 'resync-tombstone-persist'
+
+      // Session 1: a deletion confirmed at ts 7.
+      const a1 = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: docId,
+        usePersistence: true,
+        components: [],
+        singletons: [],
+      })
+      await a1.init()
+      receiveRemote(a1, { 'e1/Pos': { _exists: false } }, 7)
+      await new Promise((r) => setTimeout(r, 50))
+      a1.close()
+
+      // Session 2: reload. The persistence adapter now reseeds the tombstone into
+      // the mirror (it retains deletions), and the persisted timestamps mark it as
+      // windowed — so the deletion can be re-asserted.
+      const a2 = new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: docId,
+        usePersistence: true,
+        components: [],
+        singletons: [],
+      })
+      await a2.init()
+      a2.push([{ patch: { 'e1/Pos': { _exists: false } }, origin: Origin.Persistence, syncBehavior: 'document' }])
+
+      mockWs.receiveMessage({ type: 'resync', since: 3 })
+
+      expect(resyncPatch().documentPatches).toEqual([{ 'e1/Pos': { _exists: false } }])
+      a2.close()
+    })
+  })
+
   describe('auto-reconnect', () => {
     beforeEach(() => {
       vi.useFakeTimers()

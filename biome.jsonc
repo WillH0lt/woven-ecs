@@ -11,13 +11,15 @@
     "includes": [
       "**/packages/**/*.ts",
       "**/packages/**/*.json",
+      "__tests__/**/*.ts",
       "**/examples/**/*.ts",
       "**/examples/**/*.tsx",
       "**/examples/**/*.json",
       "**/examples/**/*.vue",
       "!**/node_modules",
       "!public/",
-      "!build/",
+      "!**/build/**",
+      "!**/.tsup/**",
       "!**/.turbo/"
     ]
   },

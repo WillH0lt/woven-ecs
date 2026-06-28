@@ -11,6 +11,7 @@ import type {
   PatchBroadcast,
   PatchRequest,
   ReconnectRequest,
+  ResyncRequest,
   RoomSnapshot,
   SessionInfo,
   SessionPermission,
@@ -318,9 +319,25 @@ export class Room {
       return
     }
 
+    // Rollback recovery detection. Capture our high-water mark *before* applying
+    // this frame's patches: `lastTimestamp` reflects the client's last acked state,
+    // which can only exceed ours if we lost ops it witnessed (e.g. we crashed and
+    // reloaded a throttled snapshot). Deciding before apply also makes `since` the
+    // true pre-existing cutoff, so the client's reply recovers the whole lost
+    // window. Readonly clients can't write, so there's nothing for them to resync.
+    const sinceForResync = this.timestamp
+    const needsResync = session.permissions === 'readwrite' && req.lastTimestamp > this.timestamp
+
     // Apply patches only for readwrite clients
     if (session.permissions === 'readwrite') {
       this.applyAndBroadcast(session, req)
+    }
+
+    // Ask the client to send everything after our cutoff. The reply arrives as a
+    // normal `patch` and heals the gap through the usual apply/broadcast path.
+    if (needsResync) {
+      const resync: ResyncRequest = { type: 'resync', since: sinceForResync }
+      this.sendTo(session, resync)
     }
 
     // Send document diff since client's last known timestamp (for all clients)

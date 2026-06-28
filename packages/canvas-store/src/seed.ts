@@ -22,7 +22,11 @@ export async function readPersistedDocument(documentId: string): Promise<Patch> 
     const entries = await store.getAllEntries()
     const patch: Patch = {}
     for (const [key, value] of entries) {
-      if (value && typeof value === 'object') patch[key] = value as Patch[string]
+      if (!value || typeof value !== 'object') continue
+      // Skip tombstones — seeding a room with deletions of components that don't
+      // exist there is pointless. A seed carries content, not history.
+      if ((value as Patch[string])._exists === false) continue
+      patch[key] = value as Patch[string]
     }
     return patch
   } finally {

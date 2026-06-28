@@ -144,15 +144,21 @@ export class PersistenceAdapter implements Adapter {
     for (const { patch } of mutations) {
       for (const [key, value] of Object.entries(patch)) {
         if (value._exists === false) {
-          // Deletion
-          this.store.delete(key)
+          // Deletion — keep a tombstone (rather than removing the key) so that
+          // on reload the websocket adapter's mirror knows the component was
+          // deleted and can re-assert that deletion if the server rolled back to
+          // before it. Tombstones accumulate; see PLAN.md for the GC follow-up.
+          this.store.put(key, { _exists: false })
         } else if (value._exists) {
           // Full replacement
           this.store.put(key, value)
         } else {
-          // Partial update - merge with existing (materializing any buffer deltas)
+          // Partial update - merge with existing (materializing any buffer deltas).
+          // Skip when there's no live base (missing or tombstoned) — a partial
+          // update has no meaning without the component, same as before tombstones
+          // were retained.
           const existing = await this.store.get<Record<string, unknown>>(key)
-          if (existing) {
+          if (existing && existing._exists !== false) {
             this.store.put(key, materializeFields(existing, value))
           }
         }

@@ -1,11 +1,12 @@
 import type { Adapter } from '../Adapter'
+import { materializeFields } from '../bufferDelta'
 import type { AnyCanvasComponentDef } from '../CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from '../CanvasSingletonDef'
 import { Origin, PROTOCOL_VERSION } from '../constants'
 import { migratePatch } from '../migrations'
 import { merge, strip } from '../mutations'
 import { type KeyValueStore, openStore } from '../storage'
-import type { ClientMessage, Mutation, Patch, ServerMessage } from '../types'
+import type { ClientMessage, ComponentData, FieldTimestamps, Mutation, Patch, ServerMessage } from '../types'
 
 /** Send interval when multiple clients are connected (~30 fps). */
 const MULTI_CLIENT_INTERVAL = 1000 / 30
@@ -47,6 +48,23 @@ export class WebsocketAdapter implements Adapter {
   private pendingEphemeralPatches: Patch[] = []
   private lastTimestamp = 0
   private messageCounter = 0
+
+  /**
+   * Mirror of the server's per-field timestamp map (key → field → timestamp),
+   * built from acks (our own writes) and broadcasts (remote writes). Used to
+   * compute the reverse diff that heals a rolled-back server. Document-scoped:
+   * only ever updated from document patches, never ephemeral/local.
+   */
+  private timestamps: Record<string, FieldTimestamps> = {}
+
+  /**
+   * Mirror of the document state, maintained from every document mutation that
+   * flows through {@link push} (any origin), the same way the ECS and persistence
+   * adapters track their own state. Buffer deltas are materialized into full
+   * arrays and tombstones are kept, so it can supply current values — including
+   * deletions — for the reverse diff on a resync.
+   */
+  private state: Record<string, ComponentData> = {}
 
   /** Patches sent but not yet acknowledged, keyed by messageId. */
   private inFlight = new Map<string, Patch>()
@@ -111,8 +129,13 @@ export class WebsocketAdapter implements Adapter {
         this.store = await openStore(`${this.documentId}-ws`, 'meta')
         const savedBuffer = await this.store.get<Patch>('offlineBuffer')
         const savedTimestamp = await this.store.get<number>('lastTimestamp')
+        const savedTimestamps = await this.store.get<Record<string, FieldTimestamps>>('timestamps')
         if (savedBuffer) this.offlineBuffer = savedBuffer
         if (savedTimestamp) this.lastTimestamp = savedTimestamp
+        // Restore the per-field timestamp map so a resync can heal a rolled-back
+        // server even after a reload (the document state mirror is rebuilt
+        // separately from the persistence adapter via the mutation router).
+        if (savedTimestamps) this.timestamps = savedTimestamps
       } catch (err) {
         console.error('Failed to load websocket offline state:', err)
       }
@@ -198,6 +221,13 @@ export class WebsocketAdapter implements Adapter {
   }
 
   push(mutations: Mutation[]): void {
+    // Keep our document mirror current from every document mutation, regardless
+    // of origin (local edits, remote changes we pulled, persisted/initial state).
+    // This is independent of what we forward to the server below.
+    for (const m of mutations) {
+      if (m.syncBehavior === 'document') this.applyToState(m.patch)
+    }
+
     const docPatches: Patch[] = []
     const ephPatches: Patch[] = []
     for (const m of mutations) {
@@ -402,6 +432,10 @@ export class WebsocketAdapter implements Adapter {
         this.persistTimestamp()
         if (msg.documentPatches && msg.documentPatches.length > 0) {
           const filtered = this.stripInFlightFields(msg.documentPatches)
+          // Record remote writes at the broadcast timestamp. Use the filtered
+          // patches — stripped fields are ones our in-flight patch overwrites, so
+          // they'll be recorded at our ack timestamp instead.
+          for (const patch of filtered) this.recordTimestamps(patch, msg.timestamp)
           this.pendingDocumentPatches.push(...filtered)
         }
         if (msg.ephemeralPatches && msg.ephemeralPatches.length > 0) {
@@ -411,10 +445,18 @@ export class WebsocketAdapter implements Adapter {
         break
       }
 
-      case 'ack':
+      case 'ack': {
         this.lastTimestamp = msg.timestamp
         this.persistTimestamp()
+        // Record our own confirmed writes at the assigned timestamp.
+        const sent = this.inFlight.get(msg.messageId)
+        if (sent) this.recordTimestamps(sent, msg.timestamp)
         this.inFlight.delete(msg.messageId)
+        break
+      }
+
+      case 'resync':
+        this.handleResync(msg.since)
         break
 
       case 'clientCount':
@@ -452,6 +494,97 @@ export class WebsocketAdapter implements Adapter {
     return result
   }
 
+  // --- Rollback recovery (reverse resync) ---
+
+  /**
+   * Merge a document patch into the local mirror, mirroring the server's
+   * `applyPatch`: deletions become tombstones (kept, so they can be re-asserted)
+   * and buffer deltas materialize against the existing full array.
+   */
+  private applyToState(patch: Patch): void {
+    for (const [key, value] of Object.entries(patch)) {
+      if (value._exists === false) {
+        this.state[key] = { _exists: false }
+        continue
+      }
+      const existing = this.state[key]
+      const base = existing && existing._exists !== false ? existing : undefined
+      this.state[key] = materializeFields(base, value) as ComponentData
+    }
+  }
+
+  /**
+   * Record server-confirmed field writes into the mirrored timestamp map.
+   * Mirrors the server's `updateTimestamps`: a deletion (`_exists:false`) resets
+   * the key's field map first, so stale field timestamps don't linger past it.
+   * Overwrites (does not `max`) so that after a server rollback the map re-adopts
+   * the restored, lower timestamp domain instead of pinning stale-high values.
+   */
+  private recordTimestamps(patch: Patch, ts: number): void {
+    for (const [key, fields] of Object.entries(patch)) {
+      let existing = this.timestamps[key]
+      if (!existing || fields._exists === false) {
+        existing = {}
+        this.timestamps[key] = existing
+      }
+      for (const field of Object.keys(fields)) {
+        existing[field] = ts
+      }
+    }
+    this.persistTimestamps()
+  }
+
+  /**
+   * Build the reverse diff that heals a rolled-back server: every field we've
+   * seen confirmed at a timestamp after `since`, taken from current document
+   * state, plus any still-unconfirmed local edits (which are by definition ahead
+   * of the restored server). This is the mirror image of the server's
+   * `buildDiff`, run on the client.
+   */
+  private buildResyncPatch(since: number): Patch {
+    const diff: Patch = {}
+
+    for (const [key, fieldTs] of Object.entries(this.timestamps)) {
+      const value = this.state[key]
+      if (!value) continue
+      const entry: ComponentData = {}
+      let hasFields = false
+      for (const [field, ts] of Object.entries(fieldTs)) {
+        if (ts > since && field in value) {
+          entry[field] = value[field]
+          hasFields = true
+        }
+      }
+      if (hasFields) diff[key] = entry
+    }
+
+    // Fold in unconfirmed local edits — offline buffer, buffered sends, and
+    // anything still in flight — none of which the restored server can have.
+    const unconfirmed: Patch[] = []
+    if (Object.keys(this.offlineBuffer).length > 0) unconfirmed.push(this.offlineBuffer)
+    unconfirmed.push(...this.documentSendBuffer)
+    for (const patch of this.inFlight.values()) unconfirmed.push(patch)
+
+    if (unconfirmed.length === 0) return diff
+    return merge(diff, ...unconfirmed)
+  }
+
+  /**
+   * Respond to a server resync request by sending our reverse diff as a normal
+   * `patch`, so it is tracked in-flight, acked, persisted, and broadcast to other
+   * clients through the usual path.
+   */
+  private handleResync(since: number): void {
+    if (!this.isOnline) return
+    const patch = this.buildResyncPatch(since)
+    if (Object.keys(patch).length === 0) return
+
+    const messageId = `${this.clientId}-resync-${++this.messageCounter}`
+    this.inFlight.set(messageId, patch)
+    const msg: ClientMessage = { type: 'patch', messageId, documentPatches: [patch] }
+    this.ws!.send(JSON.stringify(msg))
+  }
+
   /**
    * Emit deletion patches for all tracked remote ephemeral keys.
    * Called on disconnect so the ECS world drops other users' ephemeral state.
@@ -478,6 +611,13 @@ export class WebsocketAdapter implements Adapter {
   private persistTimestamp(): void {
     if (!this.store || !this.usePersistence) return
     this.store.put('lastTimestamp', this.lastTimestamp)
+  }
+
+  private persistTimestamps(): void {
+    if (!this.store || !this.usePersistence) return
+    // The store buffers writes and collapses repeats to the same key into one
+    // flush per interval, so calling this on every confirmed write is cheap.
+    this.store.put('timestamps', this.timestamps)
   }
 
   private clearPersistedOfflineBuffer(): void {

@@ -93,7 +93,7 @@ describe('PersistenceAdapter', () => {
       })
     })
 
-    it('handles deletion', async () => {
+    it('retains a tombstone on deletion so it survives reload', async () => {
       const docId = 'delete-test'
       adapter = createAdapter(docId)
       await adapter.init()
@@ -106,11 +106,14 @@ describe('PersistenceAdapter', () => {
       await new Promise((r) => setTimeout(r, 50))
       adapter.close()
 
-      // Reload - should be empty
+      // Reload — the deletion is preserved as a tombstone (not dropped) so the
+      // websocket mirror can re-assert it after a server rollback.
       adapter = createAdapter(docId)
       await adapter.init()
 
-      expect(adapter.pull()).toEqual([])
+      const mutations = adapter.pull()
+      expect(mutations.length).toBe(1)
+      expect(mutations[0].patch['e1/Pos']).toEqual({ _exists: false })
     })
   })
 
@@ -311,8 +314,9 @@ describe('PersistenceAdapter', () => {
 
       const mutations = adapter.pull()
       expect(mutations.length).toBe(1)
-      // e1 was deleted — should not reappear
-      expect(mutations[0].patch['e1/Pos']).toBeUndefined()
+      // e1 was deleted — it comes back as a tombstone (a no-op for the ECS world,
+      // so it stays gone) rather than reappearing from initialState.
+      expect(mutations[0].patch['e1/Pos']).toEqual({ _exists: false })
       // e2 should still be there
       expect(mutations[0].patch['e2/Pos']).toEqual({ _exists: true, x: 30, y: 40 })
     })

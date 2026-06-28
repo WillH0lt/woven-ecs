@@ -6,6 +6,7 @@ import type {
   AckResponse,
   ClientCountBroadcast,
   PatchBroadcast,
+  ResyncRequest,
   ServerMessage,
   SessionPermission,
   VersionMismatchResponse,
@@ -828,6 +829,136 @@ describe('Room', () => {
 
       const patches = getMessages<PatchBroadcast>(s2, 'patch')
       expect(patches).toHaveLength(0)
+    })
+  })
+
+  describe('rollback recovery (resync)', () => {
+    it('requests resync when the client is ahead of the server', () => {
+      // Fresh room is at timestamp 0; a client claiming a higher last-seen
+      // timestamp must have witnessed ops we lost.
+      const { socket, sessionId } = connectClient(room, 'alice')
+      clearMessages(socket)
+
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 5, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      const resyncs = getMessages<ResyncRequest>(socket, 'resync')
+      expect(resyncs).toHaveLength(1)
+      expect(resyncs[0].since).toBe(0)
+    })
+
+    it('does not request resync when the client is level or behind', () => {
+      const { sessionId: writerSid } = connectClient(room, 'alice')
+      // Advance the room to timestamp 2.
+      room.handleSocketMessage(
+        writerSid,
+        JSON.stringify({ type: 'patch', messageId: 'm1', documentPatches: [{ 'e1/Pos': { x: 1 } }] }),
+      )
+      room.handleSocketMessage(
+        writerSid,
+        JSON.stringify({ type: 'patch', messageId: 'm2', documentPatches: [{ 'e1/Pos': { x: 2 } }] }),
+      )
+
+      const { socket, sessionId } = connectClient(room, 'bob')
+      clearMessages(socket)
+
+      // Level (==) → no resync.
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 2, protocolVersion: PROTOCOL_VERSION }),
+      )
+      // Behind (<) → no resync.
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 1, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      expect(getMessages<ResyncRequest>(socket, 'resync')).toHaveLength(0)
+    })
+
+    it('does not request resync from readonly clients', () => {
+      const { socket, sessionId } = connectClient(room, 'bob', 'readonly')
+      clearMessages(socket)
+
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 99, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      expect(getMessages<ResyncRequest>(socket, 'resync')).toHaveLength(0)
+    })
+
+    it('captures `since` before applying the reconnect frame’s own patches', () => {
+      const { sessionId: writerSid } = connectClient(room, 'alice')
+      // Room at timestamp 1.
+      room.handleSocketMessage(
+        writerSid,
+        JSON.stringify({ type: 'patch', messageId: 'm1', documentPatches: [{ 'e1/Pos': { x: 1 } }] }),
+      )
+
+      const { socket, sessionId } = connectClient(room, 'bob')
+      clearMessages(socket)
+
+      // Bob reconnects ahead AND carries an offline edit. The offline edit bumps
+      // the room to timestamp 2, but `since` must be the pre-apply value (1) so the
+      // reverse diff recovers the full lost window.
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'reconnect',
+          lastTimestamp: 5,
+          protocolVersion: PROTOCOL_VERSION,
+          documentPatches: [{ 'e9/New': { _exists: true, v: 1 } }],
+        }),
+      )
+
+      const resyncs = getMessages<ResyncRequest>(socket, 'resync')
+      expect(resyncs).toHaveLength(1)
+      expect(resyncs[0].since).toBe(1)
+      // The offline edit was still applied.
+      expect(room.getSnapshot().state['e9/New']).toMatchObject({ v: 1 })
+    })
+
+    it('heals a rolled-back server when a witness reconnects and replies', async () => {
+      // Server persisted only up to timestamp 2, then crashed having lost the ops
+      // applied at 3+. Simulate the restore by loading that earlier snapshot.
+      const storage = new MemoryStorage()
+      await storage.save({
+        timestamp: 2,
+        state: { 'e1/Pos': { _exists: true, x: 1, y: 2 } },
+        timestamps: { 'e1/Pos': { _exists: 2, x: 2, y: 2 } },
+      })
+      room = new Room({ createStorage: () => storage })
+      await room.load()
+      expect(room.getSnapshot().timestamp).toBe(2)
+
+      // Alice witnessed up to timestamp 4 before the crash.
+      const { socket, sessionId } = connectClient(room, 'alice')
+      clearMessages(socket)
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 4, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      const resync = getMessages<ResyncRequest>(socket, 'resync')[0]
+      expect(resync.since).toBe(2)
+
+      // Alice's client replies with the lost window as a normal patch.
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'heal-1',
+          documentPatches: [{ 'e1/Pos': { x: 9 }, 'e2/Vel': { _exists: true, dx: 7 } }],
+        }),
+      )
+
+      const snap = room.getSnapshot()
+      expect(snap.state['e1/Pos']).toMatchObject({ x: 9, y: 2 })
+      expect(snap.state['e2/Vel']).toMatchObject({ _exists: true, dx: 7 })
+      expect(snap.timestamp).toBe(3)
     })
   })
 

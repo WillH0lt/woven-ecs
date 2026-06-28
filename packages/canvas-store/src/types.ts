@@ -140,4 +140,24 @@ export interface VersionMismatchResponse {
   serverProtocolVersion: number
 }
 
-export type ServerMessage = AckResponse | PatchBroadcast | ClientCountBroadcast | VersionMismatchResponse
+/**
+ * Sent by the server when it detects, on reconnect, that this client has seen a
+ * higher timestamp than the server currently holds — i.e. the server lost ops
+ * (e.g. it crashed and reloaded a throttled snapshot). The client replies with a
+ * normal `patch` containing everything it has after `since`, healing the gap.
+ */
+export interface ResyncRequest {
+  type: 'resync'
+  /** The restored server's current timestamp (T_s). Client sends ops after this. */
+  since: number
+}
+
+export type ServerMessage =
+  | AckResponse
+  | PatchBroadcast
+  | ClientCountBroadcast
+  | VersionMismatchResponse
+  | ResyncRequest
+
+/** Per-field modification timestamps for a single component key. Mirrors the server. */
+export type FieldTimestamps = Record<string, number>
