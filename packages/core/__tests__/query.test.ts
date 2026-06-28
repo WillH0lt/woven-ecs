@@ -262,8 +262,10 @@ describe('Query', () => {
       // Even numbers without multiples of 10: 500 - 100 = 400
       expect(results.length).toBe(400)
 
-      // Should be very fast (under 15ms for 1000 entities)
-      expect(endTime - startTime).toBeLessThan(15)
+      // Should be very fast for 1000 entities. Threshold has headroom for noisy
+      // shared CI runners — it's a smoke check against accidental O(n^2), not a
+      // tight benchmark.
+      expect(endTime - startTime).toBeLessThan(20)
     })
 
     it('should handle queries on large entity sets efficiently', () => {
