@@ -98,8 +98,13 @@ export class WebsocketAdapter implements Adapter {
   private documentSendBuffer: Patch[] = []
   /** Ephemeral patches buffered between sends for throttling. */
   private ephemeralSendBuffer: Patch[] = []
-  /** Timestamp of the last flush (ms). */
-  private lastSendTime = 0
+  /**
+   * Timestamp of the last flush (ms). Starts at -Infinity so the first push
+   * always flushes immediately: `performance.now()` is relative to process /
+   * page start, so a `0` sentinel would gate the first flush behind the send
+   * interval for any push within the first second of page load.
+   */
+  private lastSendTime = Number.NEGATIVE_INFINITY
   /** Accumulated ephemeral state we've sent, used to resync on reconnect. */
   private localEphemeralState: Patch = {}
   /** Accumulated ephemeral state received from remote clients, used to emit deletions on disconnect. */
