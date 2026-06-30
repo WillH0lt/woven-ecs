@@ -66,15 +66,35 @@ export interface AcceptConnectionOptions<TRequest = unknown, TMeta = unknown> {
   roomOptions?: (roomId: string) => Omit<RoomOptions, 'onTokenRefresh'>
 }
 
-/** Returned from `acceptConnection` after successful auth. The runtime
- * adapter forwards WS events to these methods. */
-export interface Connection<TMeta = unknown> {
-  sessionId: string
+/** Resolved value of `Connection.ready` once the session is live. */
+export interface ConnectionReady {
   room: Room
-  /** Returns the latest metadata attached to this session. Updated when
-   * `authorize` runs again on a token refresh. */
+  sessionId: string
+}
+
+/** Returned synchronously from `acceptConnection`. The runtime adapter
+ * forwards WS events to these methods immediately — `onMessage` buffers any
+ * frames that arrive before {@link Connection.ready} resolves and replays them
+ * in order, so the client's first `reconnect` is never dropped during the async
+ * authorize + room-load window. */
+export interface Connection<TMeta = unknown> {
+  /**
+   * Resolves once authorize and room-load complete, the session is registered,
+   * and buffered frames have been replayed — its value carries the live `room`
+   * and `sessionId`. Rejects with {@link ConnectRequestError} on a malformed
+   * URL, or whatever `authorize` threw on auth failure: close the socket (e.g.
+   * code 1008) from a `.catch`. Rejects with {@link ConnectionClosedError} if
+   * the socket closes before it became ready — benign, and the socket is
+   * already closed, so a generic `.catch` that closes it again is a harmless
+   * no-op.
+   */
+  ready: Promise<ConnectionReady>
+  /** Returns the latest metadata attached to this session, or `undefined`
+   * before `ready` resolves. Updated when `authorize` runs again on a token
+   * refresh. */
   getMetadata(): TMeta | undefined
-  /** Forward incoming WS message data here (string-decoded). */
+  /** Forward incoming WS message data here (string-decoded). Buffered until
+   * `ready` resolves, then forwarded to the room. */
   onMessage(data: string): void
   /** Call when the WS closes. */
   onClose(): void
@@ -92,58 +112,116 @@ export class ConnectRequestError extends Error {
   }
 }
 
+/** Rejection reason for `Connection.ready` when the socket closed before the
+ * connection finished authorizing/loading. Not an error condition — the
+ * session (if any) is cleaned up and there's nothing for the caller to do. */
+export class ConnectionClosedError extends Error {
+  constructor() {
+    super('Socket closed before the connection was ready')
+    this.name = 'ConnectionClosedError'
+  }
+}
+
 /**
- * Authenticate the connection, register the session, and return a handle
- * the caller can forward WS events into. Throws on auth failure or
- * malformed URL — the runtime adapter is expected to close the socket
- * (typically with code 1008) when this rejects.
+ * Register a connection and return a handle the caller forwards WS events into.
+ *
+ * Returns **synchronously** so the caller can wire its socket's message
+ * listener in the same tick the socket opens — closing the window where a
+ * client's first frame (`reconnect`, sent immediately on open) would be dropped
+ * while authorize + room-load are still running. Frames forwarded via
+ * `onMessage` before {@link Connection.ready} resolves are buffered and replayed
+ * in order. Auth/URL failures surface as a `ready` rejection (not a throw), so
+ * close the socket from `ready.catch`.
  */
-export async function acceptConnection<TRequest = unknown, TMeta = unknown>(
+export function acceptConnection<TRequest = unknown, TMeta = unknown>(
   options: AcceptConnectionOptions<TRequest, TMeta>,
-): Promise<Connection<TMeta>> {
+): Connection<TMeta> {
   const { socket, url, request, manager, authorize, roomOptions } = options
-  const { roomId, clientId, token } = parseConnectUrl(url)
 
-  const result = await authorize({ roomId, clientId, token, request })
+  // Buffer frames until the room is wired. `dispatch` is null while we're still
+  // authorizing/loading; once ready it forwards straight to the room.
+  const pending: string[] = []
+  let dispatch: ((data: string) => void) | null = null
+  let onCloseImpl: (() => void) | null = null
+  let onErrorImpl: (() => void) | null = null
+  let closed = false
+  let room: Room | undefined
+  let sessionId: string | undefined
 
-  // Only build the room options for the first connect to this roomId —
-  // RoomManager ignores options on subsequent calls anyway, but the
-  // factory may do real work (storage setup, etc.) that we don't want
-  // to redo per connect.
-  const isFirstConnect = manager.getExistingRoom(roomId) === undefined
-  const room = await manager.getOrCreateRoom(
-    roomId,
-    isFirstConnect
-      ? {
-          ...(roomOptions?.(roomId) ?? {}),
-          onTokenRefresh: async (_, info) =>
-            // `request` is connect-time only — refresh frames carry only
-            // the new token. Authorize policy that needs request-time
-            // data should encode it into the token claims at mint time.
-            authorize({
-              roomId,
-              clientId: info.clientId,
-              token: info.token,
-              request: undefined,
-            }),
-        }
-      : {},
-  )
+  const ready = (async (): Promise<ConnectionReady> => {
+    const { roomId, clientId, token } = parseConnectUrl(url)
+    const result = await authorize({ roomId, clientId, token, request })
 
-  const sessionId = room.handleSocketConnect({
-    socket,
-    clientId,
-    permissions: result.permissions,
-    metadata: result.metadata,
-  })
+    // Only build the room options for the first connect to this roomId —
+    // RoomManager ignores options on subsequent calls anyway, but the
+    // factory may do real work (storage setup, etc.) that we don't want
+    // to redo per connect.
+    const isFirstConnect = manager.getExistingRoom(roomId) === undefined
+    const r = await manager.getOrCreateRoom(
+      roomId,
+      isFirstConnect
+        ? {
+            ...(roomOptions?.(roomId) ?? {}),
+            onTokenRefresh: async (_, info) =>
+              // `request` is connect-time only — refresh frames carry only
+              // the new token. Authorize policy that needs request-time
+              // data should encode it into the token claims at mint time.
+              authorize({
+                roomId,
+                clientId: info.clientId,
+                token: info.token,
+                request: undefined,
+              }),
+          }
+        : {},
+    )
+
+    const sid = r.handleSocketConnect({
+      socket,
+      clientId,
+      permissions: result.permissions,
+      metadata: result.metadata,
+    })
+
+    room = r
+    sessionId = sid
+    dispatch = (data) => r.handleSocketMessage(sid, data)
+    onCloseImpl = () => r.handleSocketClose(sid)
+    onErrorImpl = () => r.handleSocketError(sid)
+
+    // The socket may have closed during authorize/load. The early onClose()
+    // was a no-op then (no session existed yet), so clean up the session we
+    // just registered and drop the buffered frames — there's nobody to serve.
+    if (closed) {
+      r.handleSocketClose(sid)
+      throw new ConnectionClosedError()
+    }
+
+    // Replay anything that arrived while we were authorizing/loading, in order.
+    for (const data of pending) dispatch(data)
+    pending.length = 0
+
+    return { room: r, sessionId: sid }
+  })()
 
   return {
-    sessionId,
-    room,
-    getMetadata: () => room.getSessionMetadata(sessionId) as TMeta | undefined,
-    onMessage: (data) => room.handleSocketMessage(sessionId, data),
-    onClose: () => room.handleSocketClose(sessionId),
-    onError: () => room.handleSocketError(sessionId),
+    ready,
+    getMetadata: () =>
+      room !== undefined && sessionId !== undefined
+        ? (room.getSessionMetadata(sessionId) as TMeta | undefined)
+        : undefined,
+    onMessage: (data) => {
+      if (dispatch) dispatch(data)
+      else if (!closed) pending.push(data)
+    },
+    onClose: () => {
+      closed = true
+      onCloseImpl?.()
+    },
+    onError: () => {
+      closed = true
+      onErrorImpl?.()
+    },
   }
 }
 

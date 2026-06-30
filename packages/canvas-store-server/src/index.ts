@@ -3,9 +3,11 @@ export type {
   AuthorizeInfo,
   AuthorizeResult,
   Connection,
+  ConnectionReady,
 } from './connection'
 export {
   acceptConnection,
+  ConnectionClosedError,
   ConnectRequestError,
   parseConnectUrl,
 } from './connection'

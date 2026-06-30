@@ -30,29 +30,34 @@ const server = createServer((_req, res) => {
 
 const wss = new WebSocketServer({ server })
 
-wss.on('connection', async (ws, req) => {
-  let conn: Awaited<ReturnType<typeof acceptConnection>>
-  try {
-    conn = await acceptConnection({
-      socket: ws,
-      url: req.url ?? '',
-      request: req,
-      manager,
-      authorize: ({ token, roomId }) => authorize({ token, roomId }),
-      roomOptions: (roomId) => ({
-        createStorage: () => new FileStorage({ dir: './data', roomId }),
-      }),
-    })
-  } catch (err) {
-    ws.close(1008, (err as Error).message)
-    return
-  }
+wss.on('connection', (ws, req) => {
+  // `acceptConnection` returns synchronously, so we wire the message listener in
+  // the same tick the socket opens — the client's first `reconnect` frame is
+  // buffered (not dropped) while authorize + room-load run, then replayed.
+  const conn = acceptConnection({
+    socket: ws,
+    url: req.url ?? '',
+    request: req,
+    manager,
+    authorize: ({ token, roomId }) => authorize({ token, roomId }),
+    roomOptions: (roomId) => ({
+      createStorage: () => new FileStorage({ dir: './data', roomId }),
+    }),
+  })
 
   ws.on('message', (data) => conn.onMessage(String(data)))
   ws.on('close', conn.onClose)
   ws.on('error', conn.onError)
 
-  console.log(`Client ${conn.sessionId} joined room ${conn.room.getSessionCount()} active session(s) total`)
+  // Auth/URL failures reject `ready`; close the socket. A close-before-ready
+  // rejection is benign (the socket is already closing).
+  conn.ready
+    .then(({ room, sessionId }) => {
+      console.log(`Client ${sessionId} joined room — ${room.getSessionCount()} active session(s) total`)
+    })
+    .catch((err) => {
+      ws.close(1008, (err as Error).message)
+    })
 })
 
 server.listen(PORT, () => {

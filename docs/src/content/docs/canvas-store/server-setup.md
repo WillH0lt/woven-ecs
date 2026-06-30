@@ -19,34 +19,30 @@ const manager = new RoomManager({ idleTimeout: 60_000 })
 const server = createServer((_req, res) => res.writeHead(200).end('ok'))
 const wss = new WebSocketServer({ server })
 
-wss.on('connection', async (ws, req) => {
-  let conn
-  try {
-    conn = await acceptConnection({
-      socket: ws,
-      url: req.url ?? '',
-      request: req,
-      manager,
-      authorize: async ({ roomId, token }) => {
-        const claims = await validateToken(token) // your verifier
-        if (claims.roomId !== roomId) throw new Error('token does not match this room')
-        return {
-          permissions: claims.canWrite ? 'readwrite' : 'readonly',
-          metadata: { claims }, // optional — exposed via room.getSessionMetadata()
-        }
-      },
-      roomOptions: (roomId) => ({
-        createStorage: () => new FileStorage({ dir: './data', roomId }),
-      }),
-    })
-  } catch (err) {
-    ws.close(1008, (err as Error).message)
-    return
-  }
+wss.on('connection', (ws, req) => {
+  const conn = acceptConnection({
+    socket: ws,
+    url: req.url ?? '',
+    request: req,
+    manager,
+    authorize: async ({ roomId, token }) => {
+      const claims = await validateToken(token) // your verifier
+      if (claims.roomId !== roomId) throw new Error('token does not match this room')
+      return {
+        permissions: claims.canWrite ? 'readwrite' : 'readonly',
+        metadata: { claims }, // optional — exposed via room.getSessionMetadata()
+      }
+    },
+    roomOptions: (roomId) => ({
+      createStorage: () => new FileStorage({ dir: './data', roomId }),
+    }),
+  })
 
   ws.on('message', (data) => conn.onMessage(String(data)))
   ws.on('close', conn.onClose)
   ws.on('error', conn.onError)
+
+  conn.ready.catch((err) => ws.close(1008, (err as Error).message))
 })
 
 server.listen(8080)
@@ -66,8 +62,8 @@ Bun.serve({
     return new Response('ok')
   },
   websocket: {
-    async open(ws) {
-      ws.data.conn = await acceptConnection({
+    open(ws) {
+      const conn = acceptConnection({
         socket: ws,
         url: ws.data.req.url,
         request: ws.data.req,
@@ -78,6 +74,8 @@ Bun.serve({
           return { permissions: claims.canWrite ? 'readwrite' : 'readonly' }
         },
       })
+      ws.data.conn = conn
+      conn.ready.catch((err) => ws.close(1008, (err as Error).message))
     },
     message(ws, message) { ws.data.conn?.onMessage(String(message)) },
     close(ws) { ws.data.conn?.onClose() },
@@ -87,11 +85,15 @@ Bun.serve({
 
 ### Per-session metadata
 
-The optional `metadata` field returned from `authorize` is stored on the session and refreshed automatically when the client swaps tokens. Read it back with `room.getSessionMetadata(sessionId)` — useful for caching the verified token or claims when the server later makes outbound calls on the user's behalf.
+The optional `metadata` field returned from `authorize` is stored on the session and refreshed automatically when the client swaps tokens. Read it back with `conn.getMetadata()`, or via `room.getSessionMetadata(sessionId)` once `ready` resolves — useful for caching the verified token or claims when the server later makes outbound calls on the user's behalf.
 
 ```typescript
-const meta = conn.room.getSessionMetadata(conn.sessionId)
+const { room, sessionId } = await conn.ready
+const meta = room.getSessionMetadata(sessionId)
 //   ^? unknown — type via the generic on acceptConnection<TRequest, TMeta>
+
+// Or, at any point after ready, without destructuring:
+const sameMeta = conn.getMetadata() // undefined until ready resolves
 ```
 
 ## Storage Backends
