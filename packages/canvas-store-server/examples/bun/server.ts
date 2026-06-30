@@ -45,21 +45,32 @@ const server = Bun.serve<WSData>({
   },
 
   websocket: {
-    async open(ws) {
-      try {
-        ws.data.conn = await acceptConnection<unknown, SessionMeta>({
-          socket: ws,
-          url: ws.data.url,
-          manager,
-          authorize: ({ token, roomId }) => authorize({ token, roomId }),
-          roomOptions: (roomId) => ({
-            createStorage: () => new FileStorage({ dir: './data', roomId }),
-          }),
+    // `acceptConnection` returns synchronously, so `ws.data.conn` is set before
+    // `open` returns — and therefore before `message` can fire for this socket.
+    // The client's first `reconnect` frame is buffered while authorize +
+    // room-load run, then replayed. (Awaiting here instead would leave
+    // `ws.data.conn` null during the window and silently drop that frame.)
+    open(ws) {
+      const conn = acceptConnection<unknown, SessionMeta>({
+        socket: ws,
+        url: ws.data.url,
+        manager,
+        authorize: ({ token, roomId }) => authorize({ token, roomId }),
+        roomOptions: (roomId) => ({
+          createStorage: () => new FileStorage({ dir: './data', roomId }),
+        }),
+      })
+      ws.data.conn = conn
+
+      // Auth/URL failures reject `ready`; close the socket. A close-before-ready
+      // rejection is benign (the socket is already closing).
+      conn.ready
+        .then(({ sessionId }) => {
+          console.log(`Client ${sessionId} joined a room`)
         })
-        console.log(`Client ${ws.data.conn.sessionId} joined a room`)
-      } catch (err) {
-        ws.close(1008, (err as Error).message)
-      }
+        .catch((err) => {
+          ws.close(1008, (err as Error).message)
+        })
     },
 
     message(ws, message) {

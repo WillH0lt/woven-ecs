@@ -8,7 +8,7 @@ description: API reference for @woven-ecs/canvas-store-server
 Runtime-agnostic connection helper. Parses the wire-protocol query parameters, runs your `authorize`, registers the session, wires `onTokenRefresh` to the same `authorize`, and returns a handle to forward WS events into.
 
 ```typescript
-const conn = await acceptConnection({
+const conn = acceptConnection({
   socket,
   url: req.url ?? '',
   request: req,        // optional, passed through to authorize
@@ -20,10 +20,15 @@ const conn = await acceptConnection({
   roomOptions: (roomId) => ({ /* RoomOptions for first connect to this room */ }),
 })
 
-// Forward events from your runtime:
+// Forward events from your runtime — attach synchronously, do NOT await first:
 ws.on('message', (data) => conn.onMessage(String(data)))
 ws.on('close', conn.onClose)
 ws.on('error', conn.onError)
+
+// Close the socket on auth/URL failure:
+conn.ready.catch((err) => ws.close(1008, err.message))
+// Or use the live room/session once ready:
+const { room, sessionId } = await conn.ready
 ```
 
 ### AcceptConnectionOptions
@@ -50,8 +55,7 @@ ws.on('error', conn.onError)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `sessionId` | `string` | The room session ID assigned after authorization. |
-| `room` | `Room` | The room this session is attached to. |
+| `ready` | `Promise<{ room, sessionId }>` | Resolves once authorize + room-load complete, the session is registered, and buffered frames are replayed. Rejects with `ConnectRequestError` (bad URL), whatever `authorize` threw (auth failure), or `ConnectionClosedError`. |
 | `getMetadata()` | `TMeta \| undefined` | Returns the latest metadata for this session. |
 | `onMessage(data)` | `void` | Forward an incoming WS message string. |
 | `onClose()` | `void` | Call when the WS closes. |
