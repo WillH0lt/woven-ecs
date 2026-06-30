@@ -62,6 +62,7 @@ Pass `true` to enable with defaults, or an object to customize:
 | `token` | `string` | Authentication token |
 | `onVersionMismatch` | `function` | Protocol version mismatch handler |
 | `onConnectivityChange` | `function` | Connection status change handler |
+| `onSync` | `function` | Called once the server's initial document has been delivered and applied. |
 
 ### CanvasStore Methods
 
@@ -80,6 +81,7 @@ Pass `true` to enable with defaults, or an object to customize:
 | `connect()` | `Promise<void>` | Connect/reconnect WebSocket |
 | `disconnect()` | `void` | Disconnect WebSocket |
 | `setToken(token)` | `void` | Replace the websocket auth token. Sends an `auth-refresh` frame when online; updates the URL token for the next connect when offline |
+| `isSynced` | `boolean` | _(getter)_ `true` once the server's initial document has been delivered and applied (immediately for a local-only store). |
 | `close()` | `void` | Close all adapters |
 
 ---

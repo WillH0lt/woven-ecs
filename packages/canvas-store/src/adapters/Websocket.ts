@@ -22,6 +22,7 @@ export interface WebsocketAdapterOptions {
   token?: string
   onVersionMismatch?: (serverProtocolVersion: number) => void
   onConnectivityChange?: (isOnline: boolean) => void
+  onSynced?: () => void
   components: AnyCanvasComponentDef[]
   singletons: AnyCanvasSingletonDef[]
 }
@@ -107,6 +108,8 @@ export class WebsocketAdapter implements Adapter {
   private token?: string
   private onVersionMismatch?: (serverProtocolVersion: number) => void
   private onConnectivityChange?: (isOnline: boolean) => void
+  private onSynced?: () => void
+  private pendingSynced = false
   private componentsByName: ReadonlyMap<string, AnyCanvasComponentDef | AnyCanvasSingletonDef>
 
   get isOnline(): boolean {
@@ -122,6 +125,7 @@ export class WebsocketAdapter implements Adapter {
     this.token = options.token
     this.onVersionMismatch = options.onVersionMismatch
     this.onConnectivityChange = options.onConnectivityChange
+    this.onSynced = options.onSynced
 
     const componentMap = new Map<string, AnyCanvasComponentDef | AnyCanvasSingletonDef>()
     for (const def of [...options.components, ...options.singletons]) {
@@ -378,6 +382,13 @@ export class WebsocketAdapter implements Adapter {
       })
     }
 
+    // Any document received before the `synced` marker was drained above, so the
+    // initial state is now applied — fire the signal.
+    if (this.pendingSynced) {
+      this.pendingSynced = false
+      this.onSynced?.()
+    }
+
     return results
   }
 
@@ -474,6 +485,13 @@ export class WebsocketAdapter implements Adapter {
         }
         break
       }
+
+      case 'synced':
+        // The document we needed arrived just before this (ordered). Defer the
+        // signal to pull(), where those patches are actually applied — so
+        // "synced" means loaded-into-the-world, not merely received.
+        this.pendingSynced = true
+        break
 
       case 'resync':
         this.handleResync(msg.since)

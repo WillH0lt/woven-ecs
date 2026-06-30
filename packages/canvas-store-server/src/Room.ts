@@ -15,6 +15,7 @@ import type {
   RoomSnapshot,
   SessionInfo,
   SessionPermission,
+  SyncedResponse,
   VersionMismatchResponse,
 } from './types'
 import type { WebSocketLike } from './WebSocketLike'
@@ -218,14 +219,30 @@ export class Room {
     return result
   }
 
-  close(): void {
+  /**
+   * Persist the current state, awaiting the write. Unlike the throttled
+   * background save, this resolves only once storage has acknowledged — call
+   * it from a process shutdown handler so state isn't lost on a k8s rollout.
+   * Cancels any pending throttled save. Safe to call repeatedly.
+   */
+  async flush(): Promise<void> {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+    if (!this.storage) return
+    await this.storage.save(this.getSnapshot())
+  }
+
+  close(options: { flush?: boolean } = {}): void {
     this.closed = true
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer)
       this.saveTimer = null
     }
-    // Flush any pending save synchronously-ish
-    this.flushSave()
+    // Flush any pending save (fire-and-forget). Pass `flush: false` when the
+    // caller has already awaited `flush()` to avoid a redundant write.
+    if (options.flush !== false) this.flushSave()
     for (const session of this.sessions.values()) {
       try {
         session.socket.close()
@@ -354,6 +371,12 @@ export class Room {
     if (response.documentPatches || response.ephemeralPatches) {
       this.sendTo(session, response)
     }
+
+    // Always signal that the client's initial state has been delivered — even
+    // when the diff was empty — so it can tell "still loading" from "empty".
+    // Sent after the patch so the snapshot is on the wire first (ordered).
+    const synced: SyncedResponse = { type: 'synced', timestamp: this.timestamp }
+    this.sendTo(session, synced)
   }
 
   /**

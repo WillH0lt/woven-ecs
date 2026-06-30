@@ -157,12 +157,23 @@ export interface ResyncRequest {
   since: number
 }
 
+/**
+ * Sent right after the reconnect response, once the server has delivered our
+ * document state — always, even for an empty room. Lets us tell "still loading"
+ * apart from "genuinely empty". See {@link CanvasStore.isSynced}.
+ */
+export interface SyncedResponse {
+  type: 'synced'
+  timestamp: number
+}
+
 export type ServerMessage =
   | AckResponse
   | PatchBroadcast
   | ClientCountBroadcast
   | VersionMismatchResponse
   | ResyncRequest
+  | SyncedResponse
 
 /** Per-field modification timestamps for a single component key. Mirrors the server. */
 export type FieldTimestamps = Record<string, number>

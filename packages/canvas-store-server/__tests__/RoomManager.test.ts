@@ -64,7 +64,7 @@ describe('RoomManager', () => {
     await getRoom('room-1')
     await getRoom('room-2')
 
-    manager.closeAll()
+    await manager.closeAll()
 
     expect(manager.getRoomIds()).toEqual([])
   })
@@ -114,6 +114,67 @@ describe('RoomManager', () => {
     expect(manager.getRoomIds()).toEqual(['room-1'])
 
     vi.useRealTimers()
+  })
+
+  it('closeAll persists room state on shutdown', async () => {
+    const storages = new Map<string, MemoryStorage>()
+    const m = new RoomManager({ idleTimeout: 50 })
+    const open = async (roomId: string) => {
+      const storage = new MemoryStorage()
+      storages.set(roomId, storage)
+      return m.getOrCreateRoom(roomId, { createStorage: () => storage, saveThrottleMs: 10_000 })
+    }
+
+    const r1 = await open('room-1')
+    const r2 = await open('room-2')
+    const s1 = createMockSocket()
+    const s2 = createMockSocket()
+    const sid1 = r1.handleSocketConnect({ socket: s1, clientId: 'alice', permissions: 'readwrite' })
+    r2.handleSocketConnect({ socket: s2, clientId: 'bob', permissions: 'readwrite' })
+
+    // Apply a patch so there is unsaved state (throttled save hasn't fired yet).
+    r1.handleSocketMessage(
+      sid1,
+      JSON.stringify({
+        type: 'patch',
+        messageId: '1',
+        documentPatches: [{ 'entity-1/Position': { _exists: true, x: 42 } }],
+      }),
+    )
+
+    await m.closeAll()
+
+    // State was persisted despite the throttle timer not having fired.
+    const saved = await storages.get('room-1')!.load()
+    expect(saved?.state['entity-1/Position']).toBeDefined()
+
+    // Rooms are gone and sockets closed.
+    expect(m.getRoomIds()).toEqual([])
+    expect(s1.close).toHaveBeenCalled()
+    expect(s2.close).toHaveBeenCalled()
+  })
+
+  it('closeAll closes rooms before flushing, so no patch can be acked after the snapshot', async () => {
+    // Storage that records the room's live session count at the moment save()
+    // runs. Closing before flushing means sessions are already cleared here.
+    let sessionCountAtSave = -1
+    const m = new RoomManager({ idleTimeout: 50 })
+    const room = await m.getOrCreateRoom('room-1', {
+      saveThrottleMs: 10_000,
+      createStorage: () => ({
+        load: async () => null,
+        save: async () => {
+          sessionCountAtSave = room.getSessionCount()
+        },
+      }),
+    })
+    const socket = createMockSocket()
+    room.handleSocketConnect({ socket, clientId: 'alice', permissions: 'readwrite' })
+    expect(room.getSessionCount()).toBe(1)
+
+    await m.closeAll()
+
+    expect(sessionCountAtSave).toBe(0)
   })
 
   it('getExistingRoom returns undefined for unknown rooms', () => {

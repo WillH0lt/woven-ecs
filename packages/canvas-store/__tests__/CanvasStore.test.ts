@@ -179,4 +179,14 @@ describe('CanvasStore', () => {
       expect(store.getState()).toEqual({})
     })
   })
+
+  describe('isSynced', () => {
+    it('is true immediately for a local-only store (no websocket)', async () => {
+      store = new CanvasStore({})
+      expect(store.isSynced).toBe(false)
+      await store.initialize({ components: ALL_COMPONENTS, singletons: ALL_SINGLETONS })
+      // No websocket → nothing remote to wait for.
+      expect(store.isSynced).toBe(true)
+    })
+  })
 })

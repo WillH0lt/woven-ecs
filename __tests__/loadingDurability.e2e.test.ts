@@ -222,6 +222,34 @@ describe('document loads on reload after an interrupted initial sync (e2e)', () 
     writer.disconnect()
     await settleIdb()
   })
+
+  it('marks the store synced (and fires onSync) once the document is delivered + applied', async () => {
+    const docId = 'room-synced-signal'
+    currentRoom = new Room()
+    const writer = await seedServerDocument()
+
+    const onSync = vi.fn()
+    const store = new CanvasStore({
+      persistence: { documentId: docId },
+      websocket: { documentId: docId, url: 'ws://localhost/sync', clientId: 'loader', onSync },
+    })
+    const world = makeWorld()
+    await store.initialize({ components: COMPONENTS, singletons: SINGLETONS })
+
+    // The snapshot + synced marker have arrived, but synced is deferred to apply.
+    expect(store.isSynced).toBe(false)
+    expect(onSync).not.toHaveBeenCalled()
+
+    tick(world, store) // applies the snapshot and fires synced
+    expect(store.isSynced).toBe(true)
+    expect(onSync).toHaveBeenCalledTimes(1)
+    // synced really does mean loaded: the document is in the world.
+    expect(store.getState()['e1/Position']).toMatchObject({ x: 1, y: 1 })
+
+    store.close()
+    writer.disconnect()
+    await settleIdb()
+  })
 })
 
 // --- Server warm-up lag --------------------------------------------------------

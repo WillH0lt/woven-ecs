@@ -9,6 +9,7 @@ import type {
   ResyncRequest,
   ServerMessage,
   SessionPermission,
+  SyncedResponse,
   VersionMismatchResponse,
 } from '../src/types'
 
@@ -423,6 +424,51 @@ describe('Room', () => {
       expect(patches).toHaveLength(1)
       // Should only include e2/Vel which was at timestamp 2
       expect(patches[0].documentPatches).toEqual([{ 'e2/Vel': { _exists: true, dx: 1 } }])
+    })
+
+    it('sends a synced message after the diff on reconnect', () => {
+      const { sessionId: sid1 } = connectClient(room, 'alice')
+      room.handleSocketMessage(
+        sid1,
+        JSON.stringify({ type: 'patch', messageId: 'm1', documentPatches: [{ 'e1/Pos': { _exists: true, x: 1 } }] }),
+      )
+
+      const { socket: s2, sessionId: sid2 } = connectClient(room, 'bob')
+      clearMessages(s2)
+      room.handleSocketMessage(
+        sid2,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 0, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      const synced = getMessages<SyncedResponse>(s2, 'synced')
+      expect(synced).toHaveLength(1)
+      expect(synced[0].timestamp).toBe(room.getSnapshot().timestamp)
+      // The snapshot patch goes out before the synced marker.
+      const types = s2.messages.map((m) => m.type)
+      expect(types.indexOf('patch')).toBeLessThan(types.indexOf('synced'))
+    })
+
+    it('sends synced even when the room is empty (no diff)', () => {
+      const { socket, sessionId } = connectClient(room, 'alice')
+      clearMessages(socket)
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 0, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      expect(getMessages<PatchBroadcast>(socket, 'patch')).toHaveLength(0)
+      expect(getMessages<SyncedResponse>(socket, 'synced')).toHaveLength(1)
+    })
+
+    it('does not send synced on a version mismatch', () => {
+      const { socket, sessionId } = connectClient(room, 'alice')
+      clearMessages(socket)
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: 0, protocolVersion: PROTOCOL_VERSION + 1 }),
+      )
+
+      expect(getMessages<SyncedResponse>(socket, 'synced')).toHaveLength(0)
     })
 
     it('applies offline document patches from reconnecting client', () => {

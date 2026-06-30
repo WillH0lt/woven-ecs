@@ -187,3 +187,23 @@ wss.on('connection', async (ws, req) => {
   ws.on('error', () => room.handleSocketError(sessionId))
 })
 ```
+
+### Graceful shutdown
+
+Rooms persist on a throttled timer, so a process that exits abruptly can lose
+edits made since the last save. Call `manager.closeAll()` from your signal
+handlers: it's `async` and, before resolving, disconnects every client and
+flushes each room to storage — so `await` it before exiting.
+
+```typescript
+async function shutdown(signal: string) {
+  console.log(`${signal} received, flushing rooms...`)
+  server.close() // stop accepting new connections
+  await manager.closeAll() // disconnect clients, then flush every room
+  process.exit(0)
+}
+
+// Kubernetes sends SIGTERM on rollout/scale-down; SIGINT is Ctrl-C locally.
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))
+```

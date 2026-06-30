@@ -60,9 +60,22 @@ server.listen(PORT, () => {
   console.log(`Connect: ws://localhost:${PORT}?roomId=myRoom&clientId=myClient&token=demo`)
 })
 
-process.on('SIGINT', () => {
-  console.log('\nShutting down...')
-  manager.closeAll()
+let shuttingDown = false
+async function shutdown(signal: string) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`\nReceived ${signal}, flushing rooms...`)
+  // Stop accepting new connections, then persist all rooms before exiting.
   server.close()
+  try {
+    await manager.closeAll()
+    console.log('Rooms flushed.')
+  } catch (err) {
+    console.error('Error during shutdown flush:', err)
+  }
   process.exit(0)
-})
+}
+
+// k8s sends SIGTERM on rollout/scale-down; SIGINT is Ctrl-C in local dev.
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))

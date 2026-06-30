@@ -325,6 +325,98 @@ describe('WebsocketAdapter', () => {
     })
   })
 
+  describe('synced handling', () => {
+    function adapterWithOnSynced(onSynced: () => void) {
+      return new WebsocketAdapter({
+        url: 'ws://localhost:8080',
+        clientId: 'client-1',
+        documentId: 'test-doc',
+        usePersistence: false,
+        onSynced,
+        components: [],
+        singletons: [],
+      })
+    }
+
+    it('fires onSynced on pull (apply), not on receipt', async () => {
+      const onSynced = vi.fn()
+      const adapter = adapterWithOnSynced(onSynced)
+      await adapter.init()
+
+      mockWs.receiveMessage({ type: 'synced', timestamp: 7 })
+      // Deferred until the document is applied in pull().
+      expect(onSynced).not.toHaveBeenCalled()
+
+      adapter.pull()
+      expect(onSynced).toHaveBeenCalledTimes(1)
+
+      // Fires once, not again on subsequent pulls.
+      adapter.pull()
+      expect(onSynced).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires after the snapshot that preceded it has been applied', async () => {
+      const onSynced = vi.fn()
+      const adapter = adapterWithOnSynced(onSynced)
+      await adapter.init()
+
+      // Snapshot then synced (server order), drained together on the next pull.
+      mockWs.receiveMessage({
+        type: 'patch',
+        documentPatches: [{ 'e1/Pos': { _exists: true, x: 1 } }],
+        clientId: '',
+        timestamp: 3,
+      })
+      mockWs.receiveMessage({ type: 'synced', timestamp: 3 })
+
+      const muts = adapter.pull()
+      expect(muts).toHaveLength(1) // the snapshot was applied
+      expect(onSynced).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores synced when no handler is set', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+      mockWs.receiveMessage({ type: 'synced', timestamp: 1 })
+      expect(() => adapter.pull()).not.toThrow()
+    })
+
+    it('resolves on the synced from a reconnect — one signal is enough, not one per connection', async () => {
+      const onSynced = vi.fn()
+      const adapter = adapterWithOnSynced(onSynced)
+      await adapter.init() // connection 1
+
+      // Connection 1 drops before any synced arrives.
+      adapter.disconnect()
+      await adapter.reconnect() // connection 2
+
+      // It is NOT stuck waiting for a first-connection synced.
+      adapter.pull()
+      expect(onSynced).not.toHaveBeenCalled()
+
+      // A single synced delivered on the reconnect is enough.
+      mockWs.receiveMessage({ type: 'synced', timestamp: 1 })
+      adapter.pull()
+      expect(onSynced).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires once even if a synced was received but not yet pulled before a reconnect', async () => {
+      const onSynced = vi.fn()
+      const adapter = adapterWithOnSynced(onSynced)
+      await adapter.init()
+
+      // synced received on connection 1 but the connection drops before pull().
+      mockWs.receiveMessage({ type: 'synced', timestamp: 1 })
+      adapter.disconnect()
+      await adapter.reconnect()
+      // The reconnect delivers another synced.
+      mockWs.receiveMessage({ type: 'synced', timestamp: 1 })
+
+      adapter.pull()
+      expect(onSynced).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('in-flight conflict resolution', () => {
     it('strips overlapping fields from broadcasts while patch is in-flight', async () => {
       const adapter = createAdapter('client-1')

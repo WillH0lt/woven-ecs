@@ -156,7 +156,7 @@ const manager = new RoomManager({
 | `getExistingRoom(roomId)` | `Room \| undefined` | Get room only if it exists |
 | `getRoomIds()` | `string[]` | List all active room IDs |
 | `closeRoom(roomId)` | `void` | Close and remove a specific room |
-| `closeAll()` | `void` | Shut down all rooms |
+| `closeAll()` | `Promise<void>` | Disconnect all clients and flush every room to storage |
 
 ---
 

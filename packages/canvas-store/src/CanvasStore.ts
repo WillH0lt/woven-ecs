@@ -33,6 +33,13 @@ export interface WebsocketOptions {
   token?: string
   onVersionMismatch?: (serverProtocolVersion: number) => void
   onConnectivityChange?: (isOnline: boolean) => void
+  /**
+   * Called once the server's initial document has been delivered and applied —
+   * see {@link CanvasStore.isSynced}. Fires at most once (`isSynced` latches and
+   * does not flip back on disconnect). Pair with `onConnectivityChange` for the
+   * offline case.
+   */
+  onSync?: () => void
 }
 
 /**
@@ -68,8 +75,27 @@ export class CanvasStore {
   private pendingInitialState: Record<string, ComponentData> | null = null
   private options: CanvasStoreOptions
 
+  private syncedLatched = false
+
   constructor(options: CanvasStoreOptions) {
     this.options = options
+  }
+
+  /**
+   * True once the document has loaded — the server delivered and the store
+   * applied the initial state, or immediately for a local-only store (no
+   * websocket). Latches `true` and stays there across reconnects. Until then a
+   * websocket store is still loading; pair with connectivity to handle offline.
+   * Notified via `websocket.onSync`.
+   */
+  get isSynced(): boolean {
+    return this.syncedLatched
+  }
+
+  private markSynced(): void {
+    if (this.syncedLatched) return
+    this.syncedLatched = true
+    this.options.websocket?.onSync?.()
   }
 
   async initialize({ components, singletons }: CanvasStoreInitOptions): Promise<void> {
@@ -113,10 +139,14 @@ export class CanvasStore {
         usePersistence: !!this.options.persistence,
         onVersionMismatch: this.options.websocket.onVersionMismatch,
         onConnectivityChange: this.options.websocket.onConnectivityChange,
+        onSynced: () => this.markSynced(),
         components,
         singletons,
       })
       this.adapters.push(this.websocketAdapter)
+    } else {
+      // No websocket: nothing remote to wait for, the local document is it.
+      this.markSynced()
     }
 
     await Promise.all(this.adapters.map((adapter) => adapter.init()))

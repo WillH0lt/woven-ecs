@@ -66,11 +66,36 @@ export class RoomManager {
     }
   }
 
-  /** Shut down all rooms. */
-  closeAll(): void {
-    for (const roomId of this.rooms.keys()) {
-      this.closeRoom(roomId)
+  /**
+   * Disconnect every client, then persist every room to storage. Await this
+   * from your process's SIGTERM/SIGINT handler before exiting so in-flight
+   * state survives a restart (e.g. a Kubernetes rollout).
+   *
+   * Rooms are closed *before* the flush, not after: closing clears each room's
+   * sessions, so no further patches can be applied or acked once it returns.
+   * That makes the snapshot taken by `flush()` final and stable — preserving
+   * the invariant that any patch the server acked is in the saved snapshot.
+   * Flushing first would leave a window where a client patch lands (and is
+   * acked) after the snapshot but before exit, and is then silently lost.
+   *
+   * Flushes run in parallel; a single room's failure does not abort the others.
+   */
+  async closeAll(): Promise<void> {
+    for (const timer of this.idleTimers.values()) {
+      clearTimeout(timer)
     }
+    this.idleTimers.clear()
+
+    const rooms = Array.from(this.rooms.values())
+
+    // Close sockets and clear sessions first, so the snapshot below can't race
+    // a late patch. `flush: false` defers persistence to the awaited flush.
+    for (const room of rooms) {
+      room.close({ flush: false })
+    }
+
+    await Promise.allSettled(rooms.map((room) => room.flush()))
+    this.rooms.clear()
   }
 
   private scheduleIdleClose(roomId: string): void {

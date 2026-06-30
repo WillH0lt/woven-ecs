@@ -105,9 +105,21 @@ export interface ResyncRequest {
   since: number
 }
 
+/**
+ * Sent right after the reconnect response, once the server has delivered the
+ * client's document state — always, even for an empty room (no preceding
+ * `patch`). Lets a client tell "still loading" apart from "genuinely empty".
+ * Backward-compatible: older clients ignore the unknown type.
+ */
+export interface SyncedResponse {
+  type: 'synced'
+  timestamp: number
+}
+
 export type ServerMessage =
   | AckResponse
   | PatchBroadcast
   | ClientCountBroadcast
   | VersionMismatchResponse
   | ResyncRequest
+  | SyncedResponse
