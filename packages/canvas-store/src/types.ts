@@ -119,13 +119,18 @@ export interface AckResponse {
   timestamp: number
 }
 
-/** Sent to other clients when state changes. May contain document and/or ephemeral patches. */
+/**
+ * Server → client broadcast carrying document and/or ephemeral (cursor/presence)
+ * changes in one frame. `timestamp` is the document high-water mark, present only
+ * with `documentPatches` — ephemeral state has none and never advances the cursor.
+ */
 export interface PatchBroadcast {
   type: 'patch'
   documentPatches?: Patch[]
   ephemeralPatches?: Patch[]
   clientId: string
-  timestamp: number
+  /** Document high-water mark; present iff `documentPatches` is. */
+  timestamp?: number
 }
 
 /** Sent to all clients when the connected client count changes. */

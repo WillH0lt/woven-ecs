@@ -23,6 +23,9 @@ importers:
       '@types/node':
         specifier: 24.10.0
         version: 24.10.0
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       husky:
         specifier: ^9.1.7
         version: 9.1.7

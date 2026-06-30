@@ -127,14 +127,13 @@ export class Room {
     const session: Session = { sessionId, clientId, socket, permissions, metadata }
     this.sessions.set(sessionId, session)
 
-    // Send existing ephemeral state from other clients
+    // Existing ephemeral state from other clients — ephemeral-only, no timestamp.
     const snapshot = this.buildEphemeralSnapshot(clientId)
     if (Object.keys(snapshot).length > 0) {
       const msg: PatchBroadcast = {
         type: 'patch',
         ephemeralPatches: [snapshot],
         clientId: '',
-        timestamp: this.timestamp,
       }
       this.sendTo(session, msg)
     }
@@ -340,17 +339,14 @@ export class Room {
       this.sendTo(session, resync)
     }
 
-    // Send document diff since client's last known timestamp (for all clients)
+    // Document diff (with timestamp) + other clients' ephemeral state, one message.
     const diff = this.buildDiff(req.lastTimestamp)
     const othersEph = this.buildEphemeralSnapshot(session.clientId)
 
-    const response: PatchBroadcast = {
-      type: 'patch',
-      clientId: '',
-      timestamp: this.timestamp,
-    }
+    const response: PatchBroadcast = { type: 'patch', clientId: '' }
     if (Object.keys(diff).length > 0) {
       response.documentPatches = [diff]
+      response.timestamp = this.timestamp
     }
     if (Object.keys(othersEph).length > 0) {
       response.ephemeralPatches = [othersEph]
@@ -380,12 +376,15 @@ export class Room {
     }
 
     if (hasDoc || hasEph) {
+      // One frame; timestamp rides with the document only.
       const broadcast: PatchBroadcast = {
         type: 'patch',
         clientId: session.clientId,
-        timestamp: this.timestamp,
       }
-      if (hasDoc) broadcast.documentPatches = req.documentPatches
+      if (hasDoc) {
+        broadcast.documentPatches = req.documentPatches
+        broadcast.timestamp = this.timestamp
+      }
       if (hasEph) broadcast.ephemeralPatches = req.ephemeralPatches
       this.broadcastExcept(session.sessionId, broadcast)
     }
@@ -484,7 +483,6 @@ export class Room {
           type: 'patch',
           ephemeralPatches: [deletionPatch],
           clientId: session.clientId,
-          timestamp: this.timestamp,
         }
         this.broadcastAll(broadcast)
       }

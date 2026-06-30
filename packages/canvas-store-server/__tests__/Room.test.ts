@@ -354,9 +354,9 @@ describe('Room', () => {
 
       // Bob connects and should receive Alice's ephemeral state
       const { socket: s2 } = connectClient(room, 'bob')
-      const patches = getMessages<PatchBroadcast>(s2, 'patch')
-      expect(patches).toHaveLength(1)
-      expect(patches[0].ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: true, x: 50, y: 100 } }])
+      const ephemeral = getMessages<PatchBroadcast>(s2, 'patch')
+      expect(ephemeral).toHaveLength(1)
+      expect(ephemeral[0].ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: true, x: 50, y: 100 } }])
     })
 
     it('broadcasts deletion patches when a client disconnects', () => {
@@ -377,10 +377,10 @@ describe('Room', () => {
       // Alice disconnects
       room.handleSocketClose(sid1)
 
-      const patches = getMessages<PatchBroadcast>(s2, 'patch')
-      expect(patches).toHaveLength(1)
-      expect(patches[0].ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: false } }])
-      expect(patches[0].clientId).toBe('alice')
+      const ephemeral = getMessages<PatchBroadcast>(s2, 'patch')
+      expect(ephemeral).toHaveLength(1)
+      expect(ephemeral[0].ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: false } }])
+      expect(ephemeral[0].clientId).toBe('alice')
     })
   })
 
@@ -469,12 +469,10 @@ describe('Room', () => {
         }),
       )
 
-      // Bob should receive Alice's ephemeral state
-      const patches = getMessages<PatchBroadcast>(s2, 'patch')
-      // One of the patches should contain ephemeral data
-      const ephPatch = patches.find((p) => p.ephemeralPatches?.length)
-      expect(ephPatch).toBeDefined()
-      expect(ephPatch!.ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: true, x: 50, y: 100 } }])
+      // Bob should receive Alice's ephemeral state (in its own message).
+      const ephemeral = getMessages<PatchBroadcast>(s2, 'patch')
+      expect(ephemeral).toHaveLength(1)
+      expect(ephemeral[0].ephemeralPatches).toEqual([{ 'alice/Cursor': { _exists: true, x: 50, y: 100 } }])
     })
 
     it("broadcasts reconnecting client's changes to others", () => {

@@ -47,6 +47,13 @@ export class WebsocketAdapter implements Adapter {
   private pendingDocumentPatches: Patch[] = []
   private pendingEphemeralPatches: Patch[] = []
   private lastTimestamp = 0
+  /**
+   * Highest document timestamp received but not yet applied. {@link lastTimestamp}
+   * catches up to this in {@link pull} (on apply), never on receipt — so the
+   * persisted cursor can't run ahead of the stored document if a reload
+   * interrupts a load.
+   */
+  private pendingTimestamp = 0
   private messageCounter = 0
 
   /**
@@ -335,6 +342,12 @@ export class WebsocketAdapter implements Adapter {
       const serverPatch = merge(...this.pendingDocumentPatches)
       this.pendingDocumentPatches = []
 
+      // Advance the cursor on apply (here), not receipt — see pendingTimestamp.
+      if (this.pendingTimestamp > this.lastTimestamp) {
+        this.lastTimestamp = this.pendingTimestamp
+        this.persistTimestamp()
+      }
+
       // Migrate server patches first (they might be from older clients)
       const migratedServer = migratePatch(serverPatch, this.componentsByName)
 
@@ -428,15 +441,17 @@ export class WebsocketAdapter implements Adapter {
 
     switch (msg.type) {
       case 'patch': {
-        this.lastTimestamp = msg.timestamp
-        this.persistTimestamp()
-        if (msg.documentPatches && msg.documentPatches.length > 0) {
+        // `timestamp` rides with documentPatches only, so the cursor never moves
+        // for ephemeral state bundled in the same message.
+        if (msg.documentPatches && msg.documentPatches.length > 0 && msg.timestamp !== undefined) {
+          // Record the (filtered) remote writes in the timestamp mirror. Stripped
+          // fields are ones our in-flight patch overwrites — recorded at our ack
+          // instead. This mirror is not the resume cursor.
           const filtered = this.stripInFlightFields(msg.documentPatches)
-          // Record remote writes at the broadcast timestamp. Use the filtered
-          // patches — stripped fields are ones our in-flight patch overwrites, so
-          // they'll be recorded at our ack timestamp instead.
           for (const patch of filtered) this.recordTimestamps(patch, msg.timestamp)
           this.pendingDocumentPatches.push(...filtered)
+          // Cursor advances on apply (pull), so just track how far we've received.
+          this.pendingTimestamp = Math.max(this.pendingTimestamp, msg.timestamp)
         }
         if (msg.ephemeralPatches && msg.ephemeralPatches.length > 0) {
           this.pendingEphemeralPatches.push(...msg.ephemeralPatches)
@@ -446,12 +461,17 @@ export class WebsocketAdapter implements Adapter {
       }
 
       case 'ack': {
-        this.lastTimestamp = msg.timestamp
-        this.persistTimestamp()
-        // Record our own confirmed writes at the assigned timestamp.
+        // Only document writes are tracked in-flight; an ack with no match is an
+        // ephemeral ack and must not move the cursor (else the next reconnect
+        // asks for an empty diff). Our own document write is already applied, so
+        // its ack may advance it.
         const sent = this.inFlight.get(msg.messageId)
-        if (sent) this.recordTimestamps(sent, msg.timestamp)
-        this.inFlight.delete(msg.messageId)
+        if (sent) {
+          this.lastTimestamp = msg.timestamp
+          this.persistTimestamp()
+          this.recordTimestamps(sent, msg.timestamp)
+          this.inFlight.delete(msg.messageId)
+        }
         break
       }
 

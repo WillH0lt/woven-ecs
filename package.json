@@ -34,6 +34,7 @@
     "@changesets/cli": "^2.30.0",
     "@microsoft/api-extractor": "^7.56.3",
     "@types/node": "24.10.0",
+    "fake-indexeddb": "6.2.5",
     "husky": "^9.1.7",
     "jsdom": "^27.3.0",
     "lint-staged": "^16.2.6",

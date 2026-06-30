@@ -275,15 +275,19 @@ describe('WebsocketAdapter', () => {
       const adapter = createAdapter('client-1')
       await adapter.init()
 
-      // Receive a remote patch
+      // Send a document patch so the ack below matches an in-flight write.
+      adapter.push([{ patch: { 'e1/Pos': { x: 1 } }, origin: Origin.ECS, syncBehavior: 'document' }])
+
+      // Receive a remote document patch and apply it (advances the cursor to 100).
       mockWs.receiveMessage({
         type: 'patch',
-        documentPatches: [{ 'e1/Pos': { x: 5 } }],
+        documentPatches: [{ 'e2/Pos': { x: 5 } }],
         clientId: 'client-2',
         timestamp: 100,
       })
+      adapter.pull()
 
-      // Then receive an ack with a higher timestamp
+      // Then the ack for our in-flight write, at a higher timestamp.
       mockWs.receiveMessage({
         type: 'ack',
         messageId: 'client-1-1',
@@ -294,6 +298,30 @@ describe('WebsocketAdapter', () => {
       const sent = mockWs.sentMessages.map((s) => JSON.parse(s))
       const reconnectMsg = sent.find((m) => m.type === 'reconnect' && m.lastTimestamp === 200)
       expect(reconnectMsg).toBeDefined()
+    })
+  })
+
+  describe('ephemeral message handling', () => {
+    it('queues ephemeral patches and never advances the cursor', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      // Ephemeral-only broadcast — carries no timestamp.
+      mockWs.receiveMessage({
+        type: 'patch',
+        ephemeralPatches: [{ 'client-2/cursor': { _exists: true, x: 9 } }],
+        clientId: 'client-2',
+      })
+
+      const muts = adapter.pull()
+      expect(muts).toHaveLength(1)
+      expect(muts[0].syncBehavior).toBe('ephemeral')
+      expect(muts[0].patch).toEqual({ 'client-2/cursor': { _exists: true, x: 9 } })
+
+      // The resume cursor is untouched by ephemeral traffic.
+      await adapter.reconnect()
+      const reconnectMsg = mockWs.sentMessages.map((s) => JSON.parse(s)).find((m) => m.type === 'reconnect')
+      expect(reconnectMsg?.lastTimestamp).toBe(0)
     })
   })
 
@@ -596,13 +624,14 @@ describe('WebsocketAdapter', () => {
       const adapter = createAdapter('client-1')
       await adapter.init()
 
-      // Receive a message to set lastTimestamp
+      // Receive a document patch and apply it (the cursor advances on apply).
       mockWs.receiveMessage({
         type: 'patch',
         documentPatches: [{ 'e1/Pos': { x: 10 } }],
         clientId: 'client-2',
         timestamp: 500,
       })
+      adapter.pull()
 
       // Reconnect
       await adapter.reconnect()
@@ -619,45 +648,61 @@ describe('WebsocketAdapter', () => {
   })
 
   describe('timestamp tracking', () => {
-    it('updates lastTimestamp from patch messages', async () => {
+    it('advances lastTimestamp when document patches are applied', async () => {
       const adapter = createAdapter('client-1')
       await adapter.init()
 
       mockWs.receiveMessage({
         type: 'patch',
-        documentPatches: [],
+        documentPatches: [{ 'e1/Pos': { _exists: true, x: 1 } }],
         clientId: 'client-2',
         timestamp: 100,
       })
-
       mockWs.receiveMessage({
         type: 'patch',
-        documentPatches: [],
+        documentPatches: [{ 'e1/Pos': { x: 2 } }],
         clientId: 'client-2',
         timestamp: 200,
       })
+      // The cursor advances on apply, not receipt.
+      adapter.pull()
 
-      // Reconnect to verify timestamp is tracked
       await adapter.reconnect()
       const sent = mockWs.sentMessages.map((s) => JSON.parse(s))
       const reconnectMsg = sent.find((m) => m.type === 'reconnect')
       expect(reconnectMsg?.lastTimestamp).toBe(200)
     })
 
-    it('updates lastTimestamp from ack messages', async () => {
+    it('does not advance lastTimestamp until received patches are applied', async () => {
       const adapter = createAdapter('client-1')
       await adapter.init()
 
+      // Received but NOT pulled — sitting in the in-memory queue. A reconnect now
+      // must still ask from 0, or a reload here would lose the unapplied document.
       mockWs.receiveMessage({
-        type: 'ack',
-        messageId: 'client-1-1',
-        timestamp: 300,
+        type: 'patch',
+        documentPatches: [{ 'e1/Pos': { _exists: true, x: 1 } }],
+        clientId: 'client-2',
+        timestamp: 500,
       })
 
       await adapter.reconnect()
-      const sent = mockWs.sentMessages.map((s) => JSON.parse(s))
-      const reconnectMsg = sent.find((m) => m.type === 'reconnect')
-      expect(reconnectMsg?.lastTimestamp).toBe(300)
+      const reconnectMsg = mockWs.sentMessages.map((s) => JSON.parse(s)).find((m) => m.type === 'reconnect')
+      expect(reconnectMsg?.lastTimestamp).toBe(0)
+    })
+
+    it('does not advance lastTimestamp from an ephemeral ack', async () => {
+      const adapter = createAdapter('client-1')
+      await adapter.init()
+
+      // Ephemeral sends are fire-and-forget (never tracked in-flight); their ack
+      // carries the server's document timestamp but confirms no document state.
+      adapter.push([{ patch: { 'client-1/cursor': { x: 1 } }, origin: Origin.ECS, syncBehavior: 'ephemeral' }])
+      mockWs.receiveMessage({ type: 'ack', messageId: 'client-1-1', timestamp: 300 })
+
+      await adapter.reconnect()
+      const reconnectMsg = mockWs.sentMessages.map((s) => JSON.parse(s)).find((m) => m.type === 'reconnect')
+      expect(reconnectMsg?.lastTimestamp).toBe(0)
     })
   })
 
@@ -1038,6 +1083,8 @@ describe('WebsocketAdapter', () => {
         clientId: 'client-2',
         timestamp: 500,
       })
+      // Apply it — only then does the cursor advance and get persisted.
+      adapter1.pull()
 
       // Allow fire-and-forget to complete
       await new Promise((r) => setTimeout(r, 50))
