@@ -1,6 +1,6 @@
 ---
 '@woven-ecs/canvas-store': patch
-'@woven-ecs/canvas-store-server': minor
+'@woven-ecs/canvas-store-server': patch
 ---
 
 Stop dropping document writes that are sent but never acknowledged, and stop a lost write from corrupting the room.
