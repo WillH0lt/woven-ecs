@@ -337,6 +337,60 @@ describe('Room', () => {
       const snapshot = room.getSnapshot()
       expect(snapshot.state['e1/Pos']).toBeUndefined()
     })
+
+    it('does not let a partial update resurrect a deleted component', () => {
+      // Two writers, one behind: alice deletes the component, then bob — who
+      // has not applied that deletion, so his adapter still believes it exists
+      // — patches a single field on it. Merging that partial in would rebuild
+      // the record from whatever fields happened to be in flight AND leave it
+      // without `_exists`, which no client can materialize (the client's apply
+      // path only creates an entity for `_exists: true`). The document would
+      // silently lose the entity while the room still reported something there.
+      const { sessionId: alice } = connectClient(room, 'alice')
+      const { sessionId: bob } = connectClient(room, 'bob')
+
+      room.handleSocketMessage(
+        alice,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'msg-1',
+          documentPatches: [{ 'e1/Pos': { _exists: true, x: 10, y: 20 } }],
+        }),
+      )
+      room.handleSocketMessage(
+        alice,
+        JSON.stringify({ type: 'patch', messageId: 'msg-2', documentPatches: [{ 'e1/Pos': { _exists: false } }] }),
+      )
+      room.handleSocketMessage(
+        bob,
+        JSON.stringify({ type: 'patch', messageId: 'msg-3', documentPatches: [{ 'e1/Pos': { x: 30 } }] }),
+      )
+
+      // Still deleted — and crucially, no `_exists`-less fragment left behind.
+      expect(room.getSnapshot().state['e1/Pos']).toBeUndefined()
+
+      // A full re-add still works: only partials are refused.
+      room.handleSocketMessage(
+        bob,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'msg-4',
+          documentPatches: [{ 'e1/Pos': { _exists: true, x: 30, y: 40 } }],
+        }),
+      )
+      expect(room.getSnapshot().state['e1/Pos']).toEqual({ _exists: true, x: 30, y: 40 })
+    })
+
+    it('ignores a partial update for a component the room has never seen', () => {
+      const { sessionId } = connectClient(room, 'alice')
+
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'patch', messageId: 'msg-1', documentPatches: [{ 'ghost/Pos': { x: 1 } }] }),
+      )
+
+      expect(room.getSnapshot().state['ghost/Pos']).toBeUndefined()
+    })
   })
 
   describe('ephemeral state', () => {

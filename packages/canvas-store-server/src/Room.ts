@@ -605,6 +605,18 @@ function applyPatch(state: Record<string, ComponentData>, patch: Patch): Record<
 
     const existing = state[key]
     if (!existing || existing._exists === false) {
+      // Only a full add (`_exists: true`) may bring a record into being. A
+      // partial field update means the writer believes the component already
+      // exists — it is working from a view that predates the deletion, or that
+      // never saw this key at all. Materializing it would (a) silently
+      // resurrect a deleted entity as a fragment holding only the fields that
+      // happened to be in flight, and (b) produce a record with no `_exists`,
+      // which no client can ever load: the client's apply path only creates an
+      // entity for `_exists: true` (canvas-store `adapters/ECS.ts` push(),
+      // pass 1) and routes everything else to a partial update that requires
+      // the entity to be there already. Dropping it keeps server and client
+      // agreeing on what exists.
+      if (value._exists !== true) continue
       // New component. Materialize any buffer deltas against an empty base so
       // stored state always holds full arrays.
       state[key] = materializeFields(undefined, value) as ComponentData

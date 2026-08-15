@@ -176,14 +176,19 @@ describe('acceptConnection', () => {
 
     // A frame arrives while authorize is still pending — the room doesn't exist
     // yet. Without buffering this `patch` (a real client's first writes) is lost.
-    conn.onMessage(JSON.stringify({ type: 'patch', messageId: 'm1', documentPatches: [{ 'e/Comp': { v: 1 } }] }))
+    // Carries `_exists: true` as a real client's component add does — only a
+    // full add creates a record, so a bare `{ v: 1 }` here would be a partial
+    // update for a key the room has never seen, and correctly dropped.
+    conn.onMessage(
+      JSON.stringify({ type: 'patch', messageId: 'm1', documentPatches: [{ 'e/Comp': { _exists: true, v: 1 } }] }),
+    )
     expect(socket.sent).toHaveLength(0) // nothing dispatched yet
 
     auth.resolve({ permissions: 'readwrite' })
     const { room } = await conn.ready
 
     // The buffered patch was applied and acked once the room came up.
-    expect(room.getSnapshot().state['e/Comp']).toEqual({ v: 1 })
+    expect(room.getSnapshot().state['e/Comp']).toEqual({ _exists: true, v: 1 })
     expect(socket.sent.some((s) => JSON.parse(s).type === 'ack' && JSON.parse(s).messageId === 'm1')).toBe(true)
   })
 

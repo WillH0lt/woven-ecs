@@ -173,8 +173,43 @@ export class WebsocketAdapter implements Adapter {
     return
   }
 
-  private connectWs(): Promise<void> {
+  /**
+   * Move sent-but-unacked document patches back into the offline buffer.
+   *
+   * `inFlight` is the ONLY record of writes that have left this client but not
+   * yet been acknowledged — `flush()` already drained them out of
+   * `documentSendBuffer`, and the `reconnect` frame carries `offlineBuffer`,
+   * not `inFlight`. So if the socket dies mid-flight (sleep, network blip,
+   * server restart, an auth-driven reconnect), simply clearing the map loses
+   * those writes with no error anywhere.
+   *
+   * The loss is worse than one missing edit. The ECS adapter updates its
+   * `prevState` optimistically at pull time, so it goes on believing the server
+   * has the component: every later edit to it is emitted as a *partial* diff
+   * against a key the server has never seen. Lose an entity's create this way
+   * and the entity is unrecoverable — the client can never be talked into
+   * re-sending a full record for it.
+   *
+   * Folding them into the offline buffer makes document delivery at-least-once:
+   * they persist to IndexedDB and replay on the next connect. Re-delivery is
+   * safe — field writes are last-writer-wins, and buffer deltas address
+   * absolute indices (see `applyBufferDelta`), so applying one twice is
+   * idempotent.
+   *
+   * In-flight patches were sent BEFORE anything buffered while offline, so they
+   * merge first and let the newer offline edits win on overlapping fields.
+   */
+  private requeueInFlight(): void {
+    if (this.inFlight.size === 0) return
+    this.offlineBuffer = merge(...this.inFlight.values(), this.offlineBuffer)
     this.inFlight.clear()
+    this.persistOfflineBuffer()
+  }
+
+  private connectWs(): Promise<void> {
+    // Belt-and-braces: the close handler normally requeues, but a socket that
+    // never opened (or a connect racing a close) can leave entries here.
+    this.requeueInFlight()
     return new Promise<void>((resolve, reject) => {
       const url = new URL(this.url)
       url.searchParams.set('roomId', this.documentId)
@@ -213,6 +248,9 @@ export class WebsocketAdapter implements Adapter {
       ws.addEventListener('close', () => {
         this.ws = null
         this.onConnectivityChange?.(false)
+        // Anything still in flight died with the socket — make it durable again
+        // before we go offline, so the next connect replays it.
+        this.requeueInFlight()
         this.clearRemoteEphemeral()
         if (!this.intentionallyClosed) {
           this.scheduleReconnect()
@@ -301,7 +339,13 @@ export class WebsocketAdapter implements Adapter {
 
     if (Object.keys(this.offlineBuffer).length > 0) {
       docPatches.push(this.offlineBuffer)
-      this.offlineBuffer = {}
+      // Drop the PERSISTED copy too, not just the in-memory one. `init()`
+      // reloads `offlineBuffer` from IndexedDB, so leaving it behind replays
+      // these writes on every future session — which, once `requeueInFlight`
+      // starts putting real creates in here, can resurrect entities deleted
+      // since. Clearing before the ack is safe precisely because
+      // `requeueInFlight` puts the patch back if this send never lands.
+      this.clearPersistedOfflineBuffer()
     }
 
     docPatches.push(...this.documentSendBuffer)
