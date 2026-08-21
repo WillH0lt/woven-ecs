@@ -162,22 +162,33 @@ export class Room {
   // State access
   // ---------------------------------------------------------------
 
+  /**
+   * The persistable document: live components AND tombstones.
+   *
+   * Tombstones (`{ _exists: false }` with their deletion timestamp) MUST be
+   * persisted. `buildDiff` is the only way a reconnecting client learns about
+   * a deletion it missed, and it can only send what is in `state`. This used
+   * to strip tombstones on save, so once a room was evicted and reloaded, a
+   * deletion became invisible to any client that hadn't already applied it:
+   * that client kept the entity in its cached copy forever, showed it in its
+   * view, and — believing the server still had it — only ever sent partial
+   * patches for it, which the server (rightly) drops. Delete on one machine,
+   * open a cached copy on another a day later, and the deleted thing was back.
+   *
+   * Consumers reading `state` must skip `_exists === false` entries, exactly
+   * as they already must for a live room's in-memory state.
+   *
+   * Tombstones are kept indefinitely. They are tiny (a key plus one flag and
+   * one timestamp) and a document only accumulates as many as it has ever had
+   * deletions, so they are not expected to dominate its size. Compacting them
+   * would re-open the resurrection window for whichever deletions were
+   * dropped, so there is no cap.
+   */
   getSnapshot(): RoomSnapshot {
-    // Filter out tombstones from the snapshot
-    const filteredState: Record<string, ComponentData> = {}
-    const filteredTimestamps: Record<string, FieldTimestamps> = {}
-    for (const [key, value] of Object.entries(this.state)) {
-      if (value._exists !== false) {
-        filteredState[key] = value
-        if (this.timestamps[key]) {
-          filteredTimestamps[key] = this.timestamps[key]
-        }
-      }
-    }
     return {
       timestamp: this.timestamp,
-      state: filteredState,
-      timestamps: filteredTimestamps,
+      state: { ...this.state },
+      timestamps: { ...this.timestamps },
     }
   }
 

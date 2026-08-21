@@ -230,8 +230,10 @@ describe('server rollback recovery (e2e)', () => {
     await reconnect(alice)
     await reconnect(bob)
 
-    // The deletion is re-asserted, so the entity stays gone everywhere.
-    expect(currentRoom.getSnapshot().state['e1/Pos']).toBeUndefined()
+    // The deletion is re-asserted, so the entity stays gone everywhere — and
+    // the server now keeps it as a tombstone so the next reload can't lose it
+    // again.
+    expect(currentRoom.getSnapshot().state['e1/Pos']).toEqual({ _exists: false })
     expect(alice.doc['e1/Pos']).toBeUndefined()
     expect(bob.doc['e1/Pos']).toBeUndefined()
   })

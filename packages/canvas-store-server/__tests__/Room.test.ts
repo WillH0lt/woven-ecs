@@ -334,8 +334,10 @@ describe('Room', () => {
         }),
       )
 
+      // Retained as a tombstone, not dropped — see the persistence tests below
+      // for why. Consumers skip `_exists === false`.
       const snapshot = room.getSnapshot()
-      expect(snapshot.state['e1/Pos']).toBeUndefined()
+      expect(snapshot.state['e1/Pos']).toEqual({ _exists: false })
     })
 
     it('does not let a partial update resurrect a deleted component', () => {
@@ -367,7 +369,7 @@ describe('Room', () => {
       )
 
       // Still deleted — and crucially, no `_exists`-less fragment left behind.
-      expect(room.getSnapshot().state['e1/Pos']).toBeUndefined()
+      expect(room.getSnapshot().state['e1/Pos']).toEqual({ _exists: false })
 
       // A full re-add still works: only partials are refused.
       room.handleSocketMessage(
@@ -686,6 +688,47 @@ describe('Room', () => {
       const snap = room.getSnapshot()
       expect(snap.timestamp).toBe(10)
       expect(snap.state['e1/Pos']).toEqual({ x: 99 })
+    })
+
+    it('persists tombstones so a stale client still receives a deletion after a reload', async () => {
+      // Regression. Tombstones used to be stripped from the snapshot, so once
+      // a room was evicted and reloaded, a client whose cached copy predated
+      // the deletion was never told about it — the deleted entity came back in
+      // that client's view, and stayed. Delete on one machine, open a cached
+      // copy on another a day later, and the thing you deleted is there again.
+      const storage = new MemoryStorage()
+      room = new Room({ createStorage: () => storage })
+      const { sessionId } = connectClient(room, 'alice')
+
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({
+          type: 'patch',
+          messageId: 'm1',
+          documentPatches: [{ 'e1/Pos': { _exists: true, x: 10 } }],
+        }),
+      )
+      const { timestamp: afterCreate } = room.getSnapshot()
+      room.handleSocketMessage(
+        sessionId,
+        JSON.stringify({ type: 'patch', messageId: 'm2', documentPatches: [{ 'e1/Pos': { _exists: false } }] }),
+      )
+      await storage.save(room.getSnapshot())
+
+      // Evict + reload: a brand-new Room from the persisted document.
+      const reloaded = new Room({ createStorage: () => storage })
+      await reloaded.load()
+
+      // Bob's cursor is from before the deletion — his cached copy has e1/Pos.
+      const { socket: bob, sessionId: bobId } = connectClient(reloaded, 'bob')
+      reloaded.handleSocketMessage(
+        bobId,
+        JSON.stringify({ type: 'reconnect', lastTimestamp: afterCreate, protocolVersion: PROTOCOL_VERSION }),
+      )
+
+      const patches = getMessages<PatchBroadcast>(bob, 'patch')
+      const diff = patches.flatMap((m) => m.documentPatches ?? [])
+      expect(diff.some((patch) => patch['e1/Pos']?._exists === false)).toBe(true)
     })
   })
 
