@@ -178,13 +178,22 @@ export class EntityBuffer {
   }
 
   /**
-   * Clear all entity data including component bits
+   * Clear all entity data (alive flag + component bits) once its ID is reclaimed,
+   * but PRESERVE the generation counter.
+   *
+   * The generation is what lets `readRef` tell a stale ref (to a dead entity)
+   * apart from a live ref to the entity that later reuses the same ID: `create`
+   * bumps it, so a ref packed before the reuse no longer matches. Zeroing it here
+   * would reset every reclaimed slot to generation 0, making the next `create`
+   * land on generation 1 — the same generation the slot's previous occupant had —
+   * so stale refs would silently resolve to the new entity.
    */
   delete(entityId: EntityId): void {
     const offset = entityId * this.bytesPerEntity
     const view = this.view
     const bytesPerEntity = this.bytesPerEntity
-    for (let i = 0; i < bytesPerEntity; i++) {
+    Atomics.store(view, offset, Atomics.load(view, offset) & EntityBuffer.GENERATION_MASK)
+    for (let i = 1; i < bytesPerEntity; i++) {
       Atomics.store(view, offset + i, 0)
     }
   }

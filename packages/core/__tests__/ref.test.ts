@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { addComponent, createEntity, defineComponent, field, getBackrefs, removeEntity, World } from '../src'
+import {
+  addComponent,
+  createEntity,
+  defineComponent,
+  defineSystem,
+  field,
+  getBackrefs,
+  removeEntity,
+  World,
+} from '../src'
 
 describe('Ref Field', () => {
   describe('Basic Ref Operations', () => {
@@ -286,6 +295,36 @@ describe('Ref Field', () => {
       expect(newEntityId).toBe(parentId) // Same ID, but different entity
 
       // The child's ref should be null because generation changed
+      expect(Child.read(ctx, childId).parent).toBeNull()
+    })
+
+    it('should detect stale refs after the world itself reclaims the ID', async () => {
+      // Unlike the test above (which frees the pool slot by hand), this goes through
+      // World.execute's reclaim path — the one that runs in production. That path
+      // also clears the slot's EntityBuffer record, and used to wipe the generation
+      // with it, so every occupant of a reused slot came back as generation 1 and a
+      // ref to the dead entity resolved to the new one.
+      const Child = defineComponent({
+        parent: field.ref(),
+      })
+      const world = new World([Child], { maxEntities: 10 })
+      const ctx = world._getContext()
+      const system = defineSystem(() => {
+        // no-op: only here so the reclaim watermark advances
+      })
+
+      const parentId = createEntity(ctx)
+      const childId = createEntity(ctx)
+      addComponent(ctx, childId, Child, { parent: parentId })
+      removeEntity(ctx, parentId)
+
+      // Reclamation waits for every system to run a few times past the REMOVED event.
+      for (let i = 0; i < 6; i++) await world.execute(system)
+
+      const newEntityId = createEntity(ctx)
+      expect(newEntityId).toBe(parentId) // the slot really was reclaimed and reused
+      expect(ctx.entityBuffer.has(newEntityId)).toBe(true)
+
       expect(Child.read(ctx, childId).parent).toBeNull()
     })
 

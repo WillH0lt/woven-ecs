@@ -232,6 +232,22 @@ describe('EntityBuffer', () => {
       expect(buffer.matches(1, masks(0b001, 0, 0))).toBe(false)
     })
 
+    it('should preserve the generation across delete so a reused slot gets a new generation', () => {
+      buffer.create(1)
+      const first = buffer.getGeneration(1)
+      buffer.addComponentToEntity(1, 0)
+
+      buffer.markDead(1)
+      buffer.delete(1)
+      expect(buffer.has(1)).toBe(false)
+      expect(buffer.hasComponent(1, 0)).toBe(false)
+      expect(buffer.getGeneration(1)).toBe(first) // kept, not reset to 0
+
+      buffer.create(1)
+      expect(buffer.getGeneration(1)).toBe((first + 1) & 0x7f) // bumped past the old occupant
+      expect(buffer.hasComponent(1, 0)).toBe(false)
+    })
+
     it('should combine all criteria correctly', () => {
       buffer.create(1)
       buffer.addComponentToEntity(1, 0) // bit 0
