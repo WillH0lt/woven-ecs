@@ -13,13 +13,35 @@ const MULTI_CLIENT_INTERVAL = 1000 / 30
 /** Send interval when editing solo (~1 fps). */
 const SOLO_INTERVAL = 1000
 
+export interface WebsocketCredentials {
+  token: string
+  /** Unix seconds. Omit for credentials that do not expire. */
+  expiresAt?: number
+}
+
+/** A transient credential failure with a server-requested retry delay. */
+export class WebsocketCredentialError extends Error {
+  constructor(
+    message: string,
+    public readonly retryAfterMs: number,
+  ) {
+    super(message)
+  }
+}
+
 export interface WebsocketAdapterOptions {
   url: string
   clientId: string
   documentId: string
   usePersistence: boolean
   startOffline?: boolean
-  token?: string
+  /**
+   * Obtain fresh credentials before each connection and before expiry.
+   * Throw to retry with backoff (WebsocketCredentialError honors retryAfterMs).
+   * Call disconnect() explicitly to stop connection attempts.
+   * Results from a disconnected or superseded connection are ignored.
+   */
+  getCredentials?: () => Promise<WebsocketCredentials>
   onVersionMismatch?: (serverProtocolVersion: number) => void
   onConnectivityChange?: (isOnline: boolean) => void
   onSynced?: () => void
@@ -92,7 +114,6 @@ export class WebsocketAdapter implements Adapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectDelay = 500
   private static readonly MIN_RECONNECT_DELAY = 500
-  private static readonly MAX_RECONNECT_DELAY = 10_000
 
   /** Document patches buffered between sends for throttling. */
   private documentSendBuffer: Patch[] = []
@@ -110,7 +131,11 @@ export class WebsocketAdapter implements Adapter {
   /** Accumulated ephemeral state received from remote clients, used to emit deletions on disconnect. */
   private remoteEphemeralState: Patch = {}
 
-  private token?: string
+  private connectionGeneration = 0
+  private getCredentials?: WebsocketAdapterOptions['getCredentials']
+  private credentialExpiry = Number.POSITIVE_INFINITY
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingConnection: { generation: number; promise: Promise<void> } | null = null
   private onVersionMismatch?: (serverProtocolVersion: number) => void
   private onConnectivityChange?: (isOnline: boolean) => void
   private onSynced?: () => void
@@ -118,7 +143,7 @@ export class WebsocketAdapter implements Adapter {
   private componentsByName: ReadonlyMap<string, AnyCanvasComponentDef | AnyCanvasSingletonDef>
 
   get isOnline(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN && Date.now() < this.credentialExpiry
   }
 
   constructor(options: WebsocketAdapterOptions) {
@@ -127,7 +152,7 @@ export class WebsocketAdapter implements Adapter {
     this.startOffline = options.startOffline ?? false
     this.usePersistence = options.usePersistence
     this.documentId = options.documentId
-    this.token = options.token
+    this.getCredentials = options.getCredentials
     this.onVersionMismatch = options.onVersionMismatch
     this.onConnectivityChange = options.onConnectivityChange
     this.onSynced = options.onSynced
@@ -161,13 +186,12 @@ export class WebsocketAdapter implements Adapter {
       this.intentionallyClosed = true
       return
     }
-    this.intentionallyClosed = false
+    if (this.intentionallyClosed) return
 
     try {
       await this.connectWs()
     } catch (err) {
-      console.warn('WebSocket connection failed:', err)
-      this.scheduleReconnect()
+      if (!this.intentionallyClosed) console.warn('WebSocket connection failed:', err)
     }
 
     return
@@ -207,6 +231,53 @@ export class WebsocketAdapter implements Adapter {
   }
 
   private connectWs(): Promise<void> {
+    const generation = this.connectionGeneration
+    if (this.pendingConnection?.generation === generation) return this.pendingConnection.promise
+    const promise = this.connectOnce(generation)
+      .catch((error) => {
+        if (generation === this.connectionGeneration) {
+          this.closeSocket()
+          const minimum = error instanceof WebsocketCredentialError ? error.retryAfterMs : 0
+          this.scheduleReconnect(Math.max(this.reconnectDelay, minimum))
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.getCredentials ? 60_000 : 10_000)
+        }
+        throw error
+      })
+      .finally(() => {
+        if (this.pendingConnection?.generation === generation) this.pendingConnection = null
+      })
+    this.pendingConnection = { generation, promise }
+    return promise
+  }
+
+  private async connectOnce(generation: number): Promise<void> {
+    if (generation !== this.connectionGeneration) return
+    let token: string | undefined
+    if (this.getCredentials) {
+      const credentials = await this.getCredentials()
+      if (generation !== this.connectionGeneration) return
+      token = credentials.token
+      const expiry = credentials.expiresAt === undefined ? Number.POSITIVE_INFINITY : credentials.expiresAt * 1000
+      if (!token || expiry <= Date.now() || (credentials.expiresAt !== undefined && !Number.isFinite(expiry))) {
+        throw new Error('Credential provider returned expired or invalid credentials')
+      }
+      this.credentialExpiry = expiry
+      this.clearReconnectTimer()
+      if (this.expiryTimer !== null) clearTimeout(this.expiryTimer)
+      this.expiryTimer = null
+      if (credentials.expiresAt !== undefined) {
+        const remaining = expiry - Date.now()
+        this.expiryTimer = setTimeout(() => this.closeSocket(), remaining)
+        // Refresh a minute early, or halfway through a short-lived token.
+        this.scheduleReconnect(Math.max(1_000, remaining - Math.min(60_000, remaining / 2)))
+      }
+      if (this.isOnline) {
+        const msg: ClientMessage = { type: 'auth-refresh', token }
+        this.ws!.send(JSON.stringify(msg))
+        this.reconnectDelay = WebsocketAdapter.MIN_RECONNECT_DELAY
+        return
+      }
+    }
     // Belt-and-braces: the close handler normally requeues, but a socket that
     // never opened (or a connect racing a close) can leave entries here.
     this.requeueInFlight()
@@ -214,11 +285,18 @@ export class WebsocketAdapter implements Adapter {
       const url = new URL(this.url)
       url.searchParams.set('roomId', this.documentId)
       url.searchParams.set('clientId', this.clientId)
-      if (this.token) url.searchParams.set('token', this.token)
+      if (token) url.searchParams.set('token', token)
       const ws = new WebSocket(url.toString())
+      this.ws = ws
 
       ws.addEventListener('open', () => {
-        this.ws = ws
+        // Ignore handshakes from a cancelled or superseded connection.
+        if (generation !== this.connectionGeneration || this.ws !== ws || Date.now() >= this.credentialExpiry) {
+          ws.close()
+          reject(new Error('WebSocket connection cancelled'))
+          return
+        }
+        this.reconnectDelay = WebsocketAdapter.MIN_RECONNECT_DELAY
         this.onConnectivityChange?.(true)
         // Request missed ops since last sync
         const msg: ClientMessage = {
@@ -242,10 +320,12 @@ export class WebsocketAdapter implements Adapter {
       })
 
       ws.addEventListener('message', (event) => {
-        this.handleMessage(event.data as string)
+        if (this.ws === ws && generation === this.connectionGeneration) this.handleMessage(event.data as string)
       })
 
       ws.addEventListener('close', () => {
+        reject(new Error('WebSocket closed before connecting'))
+        if (generation !== this.connectionGeneration || this.ws !== ws) return
         this.ws = null
         this.onConnectivityChange?.(false)
         // Anything still in flight died with the socket — make it durable again
@@ -257,21 +337,6 @@ export class WebsocketAdapter implements Adapter {
         }
       })
     })
-  }
-
-  /**
-   * Replace the auth token used for this connection.
-   *
-   * Updates the token used for future reconnect URLs and, if the socket is
-   * currently open, sends an `auth-refresh` frame so the server can swap
-   * credentials without dropping the connection. Pass `undefined` to clear.
-   */
-  setToken(token: string | undefined): void {
-    this.token = token
-    if (token && this.isOnline) {
-      const msg: ClientMessage = { type: 'auth-refresh', token }
-      this.ws!.send(JSON.stringify(msg))
-    }
   }
 
   push(mutations: Mutation[]): void {
@@ -443,10 +508,21 @@ export class WebsocketAdapter implements Adapter {
 
   disconnect(): void {
     this.intentionallyClosed = true
+    this.connectionGeneration++
     this.clearReconnectTimer()
-    if (this.ws) {
-      this.ws.close()
-      this.ws = null
+    this.closeSocket()
+  }
+
+  private closeSocket(): void {
+    if (this.expiryTimer !== null) clearTimeout(this.expiryTimer)
+    this.expiryTimer = null
+    const ws = this.ws
+    this.ws = null
+    ws?.close()
+    if (ws) {
+      this.onConnectivityChange?.(false)
+      this.requeueInFlight()
+      this.clearRemoteEphemeral()
     }
   }
 
@@ -462,6 +538,7 @@ export class WebsocketAdapter implements Adapter {
    * Attempt to reconnect, requesting missed ops since last timestamp.
    */
   async reconnect(): Promise<void> {
+    this.disconnect()
     this.intentionallyClosed = false
     this.reconnectDelay = WebsocketAdapter.MIN_RECONNECT_DELAY
     this.clearReconnectTimer()
@@ -475,20 +552,14 @@ export class WebsocketAdapter implements Adapter {
     }
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(delay = this.reconnectDelay): void {
     this.clearReconnectTimer()
-    this.reconnectTimer = setTimeout(async () => {
+    if (this.intentionallyClosed) return
+    this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
-      try {
-        await this.connectWs()
-        // Success — reset delay (reconnect message sent inside connectWs)
-        this.reconnectDelay = WebsocketAdapter.MIN_RECONNECT_DELAY
-      } catch {
-        // Connection failed — back off and retry (close handler will fire)
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, WebsocketAdapter.MAX_RECONNECT_DELAY)
-        this.scheduleReconnect()
-      }
-    }, this.reconnectDelay)
+      // connectWs owns failure backoff for initial connections, refreshes and retries.
+      void this.connectWs().catch(() => undefined)
+    }, delay)
   }
 
   private handleMessage(data: string): void {

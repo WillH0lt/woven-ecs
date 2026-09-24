@@ -3,6 +3,8 @@
 export {
   WebsocketAdapter,
   type WebsocketAdapterOptions,
+  WebsocketCredentialError,
+  type WebsocketCredentials,
 } from './adapters/Websocket'
 // Buffer-field sparse deltas
 export {

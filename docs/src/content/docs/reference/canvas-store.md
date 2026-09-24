@@ -59,7 +59,7 @@ Pass `true` to enable with defaults, or an object to customize:
 | `url` | `string` | WebSocket server URL |
 | `clientId` | `string` | Unique client identifier |
 | `startOffline` | `boolean` | Start disconnected |
-| `token` | `string` | Authentication token |
+| `getCredentials` | `() => Promise<WebsocketCredentials>` | Fetch and refresh credentials. |
 | `onVersionMismatch` | `function` | Protocol version mismatch handler |
 | `onConnectivityChange` | `function` | Connection status change handler |
 | `onSync` | `function` | Called once the server's initial document has been delivered and applied. |
@@ -80,7 +80,6 @@ Pass `true` to enable with defaults, or an object to customize:
 | `onSettled(callback, options)` | `void` | Called after N frames with no mutations |
 | `connect()` | `Promise<void>` | Connect/reconnect WebSocket |
 | `disconnect()` | `void` | Disconnect WebSocket |
-| `setToken(token)` | `void` | Replace the websocket auth token. Sends an `auth-refresh` frame when online; updates the URL token for the next connect when offline |
 | `isSynced` | `boolean` | _(getter)_ `true` once the server's initial document has been delivered and applied (immediately for a local-only store). |
 | `close()` | `void` | Close all adapters |
 
@@ -205,7 +204,6 @@ Real-time multiplayer synchronization adapter. When using `CanvasStore`, configu
 | `documentId` | `string` | Document identifier |
 | `usePersistence` | `boolean` | Enable offline buffer persistence |
 | `startOffline` | `boolean` | Start disconnected |
-| `token` | `string` | Authentication token |
 | `onVersionMismatch` | `function` | Protocol version mismatch handler |
 | `onConnectivityChange` | `function` | Connection status change handler |
 | `components` | `AnyCanvasComponentDef[]` | Component definitions for migrations |

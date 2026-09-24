@@ -3,7 +3,7 @@ import type { Adapter } from './Adapter'
 import { EcsAdapter } from './adapters/ECS'
 import { HistoryAdapter } from './adapters/History'
 import { PersistenceAdapter } from './adapters/Persistence'
-import { WebsocketAdapter } from './adapters/Websocket'
+import { WebsocketAdapter, type WebsocketAdapterOptions } from './adapters/Websocket'
 import type { AnyCanvasComponentDef } from './CanvasComponentDef'
 import type { AnyCanvasSingletonDef } from './CanvasSingletonDef'
 import { Origin } from './constants'
@@ -30,7 +30,8 @@ export interface WebsocketOptions {
   url: string
   clientId: string
   startOffline?: boolean
-  token?: string
+  /** Refreshable authentication; see WebsocketAdapterOptions.getCredentials. */
+  getCredentials?: WebsocketAdapterOptions['getCredentials']
   onVersionMismatch?: (serverProtocolVersion: number) => void
   onConnectivityChange?: (isOnline: boolean) => void
   /**
@@ -135,7 +136,7 @@ export class CanvasStore {
         url: this.options.websocket.url,
         clientId: this.options.websocket.clientId,
         startOffline: this.options.websocket.startOffline,
-        token: this.options.websocket.token,
+        getCredentials: this.options.websocket.getCredentials,
         usePersistence: !!this.options.persistence,
         onVersionMismatch: this.options.websocket.onVersionMismatch,
         onConnectivityChange: this.options.websocket.onConnectivityChange,
@@ -249,17 +250,6 @@ export class CanvasStore {
   disconnect(): void {
     if (!this.websocketAdapter) return
     this.websocketAdapter.disconnect()
-  }
-
-  /**
-   * Replace the auth token used for the websocket connection. No-op when
-   * websocket sync is not configured. If the socket is currently open, the
-   * new token is sent over the wire so the server can re-authorize the
-   * session without a reconnect; otherwise it's used on the next connect.
-   */
-  setToken(token: string | undefined): void {
-    if (!this.websocketAdapter) return
-    this.websocketAdapter.setToken(token)
   }
 
   /**

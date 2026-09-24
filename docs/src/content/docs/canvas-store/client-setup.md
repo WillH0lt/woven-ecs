@@ -21,7 +21,7 @@ const store = new CanvasStore({
     url: 'wss://your-server.com',
     clientId: crypto.randomUUID(),
     startOffline: false,
-    token: 'auth-token',
+    getCredentials: async () => ({ token: 'auth-token' }),
     onVersionMismatch: (serverVersion) => {
       alert('Please refresh to get the latest version');
     },
@@ -84,7 +84,7 @@ Pass `true` to enable with defaults, or an object to customize:
 | `url` | `string` | Required | WebSocket server URL (e.g., `wss://your-server.com`). |
 | `clientId` | `string` | Required | Unique identifier for this client. This ID gets sent to other users when broadcasting changes. |
 | `startOffline` | `boolean` | `false` | Start in offline mode without connecting. Changes are queued until `connect()` is called. |
-| `token` | `string` | `undefined` | Authentication token sent as a query parameter (`?token=...`) to the server. |
+| `getCredentials` | `() => Promise<WebsocketCredentials>` | `undefined` | Obtain fresh credentials before connecting and before expiry. |
 | `onVersionMismatch` | `function` | `undefined` | Callback invoked when server reports a protocol version mismatch. Receives the server's protocol version number. |
 | `onConnectivityChange` | `function` | `undefined` | Callback invoked when connection status changes. Receives a boolean (`true` when connected, `false` when disconnected). |
 | `onSync` | `function` | `undefined` | Called once the server's initial document has been delivered and applied (i.e. the document has loaded). Also readable synchronously via `store.isSynced`. Useful for holding a loading state until the document is in the world; pair with `onConnectivityChange` for the offline case. |
