@@ -51,7 +51,7 @@ const store = new CanvasStore({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/sync`,
     documentId: 'drawing-demo',
     clientId: crypto.randomUUID(),
-    token: 'demo', // the demo server accepts any non-empty token
+    getCredentials: async () => ({ token: 'demo' }), // the demo server accepts any non-empty token
     onConnectivityChange: (online) => {
       statusEl.textContent = online ? 'online' : 'offline'
       statusEl.style.color = online ? '#0a0' : '#a00'

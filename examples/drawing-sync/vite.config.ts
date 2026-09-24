@@ -24,7 +24,7 @@ function syncServerPlugin(): PluginOption {
       server.httpServer?.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
         if (!req.url || !req.url.startsWith('/sync')) return // let Vite handle HMR
         wss.handleUpgrade(req, socket, head, (ws) => {
-          acceptConnection({
+          const conn = acceptConnection({
             socket: { send: (d) => ws.send(d), close: () => ws.close() },
             url: req.url!,
             request: req,
@@ -32,12 +32,11 @@ function syncServerPlugin(): PluginOption {
             // Demo server: every connection gets full read/write access.
             authorize: () => ({ permissions: 'readwrite' }),
           })
-            .then((conn) => {
-              ws.on('message', (data) => conn.onMessage(data.toString()))
-              ws.on('close', () => conn.onClose())
-              ws.on('error', () => conn.onError())
-            })
-            .catch(() => ws.close(1008, 'unauthorized'))
+          // Attach immediately so early messages are buffered during authorization.
+          ws.on('message', (data) => conn.onMessage(data.toString()))
+          ws.on('close', () => conn.onClose())
+          ws.on('error', () => conn.onError())
+          conn.ready.catch(() => ws.close(1008, 'unauthorized'))
         })
       })
     },
